@@ -19,10 +19,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.renderer.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist:win": "npm run build && electron-builder --win nsis",
-    "dist:mac": "npm run build && electron-builder --mac dmg",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never",
     "evolution:up": "docker compose -f docker/docker-compose.yml up -d",
-    "evolution:down": "docker compose -f docker/docker-compose.yml down"
+    "evolution:down": "docker compose -f docker/docker-compose.yml down",
+    "check:electron-sqlite": "node scripts/check-electron-sqlite.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "ffmpeg-static": "5.3.0",
@@ -57,18 +59,37 @@
       "node_modules/ffmpeg-static/**"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "resources/icon.png"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Nive Atende"
+      "shortcutName": "Nive Atende",
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "icon": "resources/icon.png",
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "extraResources": [
       {
@@ -79,6 +100,8 @@
         "from": "resources/icon.png",
         "to": "icon.png"
       }
-    ]
+    ],
+    "artifactName": "Nive-Atende-${version}-${os}-${arch}.${ext}",
+    "publish": null
   }
 }

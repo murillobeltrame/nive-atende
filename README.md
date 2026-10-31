@@ -73,6 +73,35 @@ Parâmetros úteis: `?status=error`, `?terms=0`, `?setup=1`, `?page=ajustes&sect
 | `npm run dist:mac` | Instalador do Mac (`release/`) |
 | `npm run evolution:up` / `evolution:down` | Liga/desliga a Evolution no Docker |
 
+## Versões e instaladores
+
+Cada versão gera dois instaladores e os publica na página **Releases** do repositório no GitHub:
+- **Mac (Apple Silicon):** arquivo `.dmg`
+- **Windows:** arquivo `.exe`
+
+Quem gera os instaladores é o GitHub Actions, nas máquinas dele (`.github/workflows/build.yml`).
+
+Para lançar uma versão, dê dois cliques em **`Nova versão.command`** (Mac) e escolha o tipo, ou rode
+`npm run release -- patch|minor|major`. O versionador:
+
+1. sobe o número da versão no `package.json`;
+2. escreve no `CHANGELOG.md` os commits desde a última versão;
+3. faz o commit "Versão X.Y.Z" e cria a tag `vX.Y.Z`;
+4. envia para o GitHub. A tag dispara o build, que roda os testes, confere o banco do Electron, gera os
+   dois instaladores e publica a Release (leva uns 15 minutos).
+
+Os instaladores ficam na Release e não dentro do git, porque o GitHub recusa arquivos acima de 100 MB
+e cada versão incharia o repositório.
+
+**Primeira abertura:** os instaladores não têm certificado pago da Apple nem da Microsoft.
+- **Mac:** se aparecer que o app não pode ser aberto, vá em Ajustes do Sistema > Privacidade e
+  Segurança > **Abrir mesmo assim**.
+- **Windows:** se aparecer "O Windows protegeu o computador", clique em **Mais informações** >
+  **Executar assim mesmo**.
+
+Para tirar esses avisos, é preciso assinar com um Apple Developer ID (US$ 99/ano) e um certificado
+de assinatura de código para Windows.
+
 ## Estrutura
 
 ```
