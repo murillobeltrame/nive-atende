@@ -172,6 +172,9 @@ export class Store {
 
   private migrate(): void {
     const cols = (this.db.prepare("PRAGMA table_info(reservations)").all() as Row[]).map((c) => str(c.name));
+    const convCols = (this.db.prepare("PRAGMA table_info(conversations)").all() as Row[]).map((c) => str(c.name));
+    if (!convCols.includes("push_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN push_name TEXT");
+    if (!convCols.includes("saved_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN saved_name TEXT");
     if (!cols.includes("customer_status")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_status TEXT NOT NULL DEFAULT 'none'");
   }
 
@@ -211,7 +214,9 @@ export class Store {
     return {
       id: str(r.id),
       phone: str(r.phone),
-      displayName: str(r.display_name),
+      displayName: strOrNull(r.saved_name) || strOrNull(r.push_name) || str(r.display_name),
+      pushName: strOrNull(r.push_name),
+      savedName: strOrNull(r.saved_name),
       customerId: strOrNull(r.customer_id),
       customerName: strOrNull(r.customer_name),
       verifiedBy: (strOrNull(r.verified_by) as Conversation["verifiedBy"]) ?? null,
@@ -235,6 +240,7 @@ export class Store {
   }
 
   ensureConversation(id: string, phone: string, displayName: string): Conversation {
+    if (displayName) this.setPushName(id, displayName);
     const existing = this.getConversation(id);
     if (existing && phone && existing.phone !== phone && /^55\d{10,11}$/.test(phone)) {
       this.db.prepare("UPDATE conversations SET phone = ? WHERE id = ?").run(phone, id);
@@ -250,6 +256,22 @@ export class Store {
     this.db
       .prepare("INSERT INTO conversations(id, phone, display_name) VALUES(?, ?, ?)")
       .run(id, phone, displayName || phone);
+    if (displayName) this.setPushName(id, displayName);
+    return this.getConversation(id)!;
+  }
+
+  /** Nome que o contato definiu no próprio WhatsApp (só grava se a conversa existir). */
+  setPushName(id: string, name: string): Conversation | null {
+    const clean = name.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!clean || /^\+?[\d\s()-]+$/.test(clean)) return this.getConversation(id);
+    this.db.prepare("UPDATE conversations SET push_name = ? WHERE id = ? AND (push_name IS NULL OR push_name <> ?)").run(clean, id, clean);
+    return this.getConversation(id);
+  }
+
+  /** Nome dado pelo lojista (null volta a usar o nome do perfil). */
+  setSavedName(id: string, name: string | null): Conversation {
+    const clean = name?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
+    this.db.prepare("UPDATE conversations SET saved_name = ? WHERE id = ?").run(clean, id);
     return this.getConversation(id)!;
   }
 

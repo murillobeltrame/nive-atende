@@ -137,6 +137,8 @@ export function createMockApi(): NiveAtendeApi {
 
   const conv = (c: Partial<Conversation> & Pick<Conversation, "id" | "displayName">): Conversation => ({
     phone: c.id.split("@")[0] ?? "",
+    pushName: null,
+    savedName: null,
     customerId: null,
     customerName: null,
     verifiedBy: null,
@@ -613,6 +615,13 @@ export function createMockApi(): NiveAtendeApi {
     },
     async getAvatar() {
       return null;
+    },
+    async saveContact(conversationId, name) {
+      const c = findConv(conversationId);
+      c.savedName = name.trim() || null;
+      c.displayName = c.savedName ?? c.pushName ?? c.phone;
+      ev.conversation.emit({ ...c });
+      return { conversation: { ...c }, savedOnPhone: false, message: "Nome salvo no app." };
     },
     async deleteMessage(messageId) {
       const m = messages.find((x) => x.id === messageId);

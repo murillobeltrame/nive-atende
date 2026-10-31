@@ -53,6 +53,8 @@ export interface NiveAtendeApi {
   getMedia(messageId: string): Promise<string | null>; // data URL
   /** Foto de perfil do contato (data URL), quando ele deixa pública. */
   getAvatar(conversationId: string): Promise<string | null>;
+  /** Renomeia o contato no app e, se pedido, salva na agenda do WhatsApp. Nome vazio volta ao nome do perfil. */
+  saveContact(conversationId: string, name: string, saveToPhone: boolean): Promise<{ conversation: Conversation; savedOnPhone: boolean; message: string }>;
   markRead(conversationId: string): Promise<void>;
   sendText(conversationId: string, text: string): Promise<ChatMessage>;
   sendMedia(conversationId: string, media: OutgoingMedia): Promise<ChatMessage>;
@@ -123,6 +125,7 @@ export const RPC_METHODS = [
   "getMessages",
   "getMedia",
   "getAvatar",
+  "saveContact",
   "markRead",
   "sendText",
   "sendMedia",

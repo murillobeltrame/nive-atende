@@ -49,7 +49,14 @@ export interface RevokeEvent {
   waMessageId: string;
 }
 
-export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent | RevokeEvent;
+/** Nome do perfil de um contato (o que ele definiu no WhatsApp). */
+export interface ContactEvent {
+  type: "contact";
+  jid: string;
+  name: string;
+}
+
+export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent | RevokeEvent | ContactEvent;
 
 function asObj(v: unknown): Json {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {};

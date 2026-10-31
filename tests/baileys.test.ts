@@ -203,3 +203,27 @@ describe("foto de perfil", () => {
     expect(await t.svc.getProfilePictureUrl("5511999992210@s.whatsapp.net")).toBeNull();
   });
 });
+
+describe("contatos", () => {
+  it("avisa o nome que o contato definiu no WhatsApp", async () => {
+    const t = setup();
+    void t.svc.connect();
+    await tick();
+    t.sockets[0]!.ev.emit("contacts.upsert", [{ id: "5548999992210@s.whatsapp.net", notify: "Nathy 💕" }, { id: "x@s.whatsapp.net" }]);
+    expect(t.events.filter((e) => e.type === "contact")).toEqual([{ type: "contact", jid: "5548999992210@s.whatsapp.net", name: "Nathy 💕" }]);
+  });
+
+  it("salva o contato na agenda do WhatsApp", async () => {
+    const t = setup();
+    void t.svc.connect();
+    await tick();
+    const sock = t.sockets[0]! as unknown as { ev: EventEmitter; addOrEditContact: (jid: string, c: unknown) => Promise<void> };
+    sock.ev.emit("connection.update", { connection: "open" });
+    const saved: unknown[] = [];
+    sock.addOrEditContact = async (jid, c) => {
+      saved.push([jid, c]);
+    };
+    await t.svc.saveContact("5548999992210@s.whatsapp.net", "Nathalia Rocker Beltrame");
+    expect(saved).toEqual([["5548999992210@s.whatsapp.net", { fullName: "Nathalia Rocker Beltrame", firstName: "Nathalia", saveOnPrimaryAddressbook: true }]]);
+  });
+});

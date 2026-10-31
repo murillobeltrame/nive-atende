@@ -26,6 +26,8 @@ export interface WhatsAppGateway {
   deleteForEveryone(jid: string, waMessageId: string): Promise<void>;
   /** URL da foto de perfil, quando o contato deixa pública (senão null). */
   getProfilePictureUrl?(jid: string): Promise<string | null>;
+  /** Salva/renomeia o contato na agenda do WhatsApp do celular (só no WhatsApp embutido). */
+  saveContact?(jid: string, name: string): Promise<void>;
 }
 
 type Json = Record<string, unknown>;

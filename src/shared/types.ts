@@ -71,7 +71,12 @@ export interface Conversation {
   /** JID do WhatsApp (ex.: 5548999990000@s.whatsapp.net). */
   id: string;
   phone: string;
+  /** Nome para mostrar: o salvo pelo lojista, senão o nome do perfil do contato, senão o telefone. */
   displayName: string;
+  /** Nome que o próprio contato definiu no WhatsApp. */
+  pushName: string | null;
+  /** Nome dado pelo lojista no app (renomear contato). */
+  savedName: string | null;
   customerId: string | null;
   customerName: string | null;
   verifiedBy: "phone" | "cpf" | null;

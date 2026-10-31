@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { Composer } from "../components/Composer";
-import { IconCheck, IconSearch, IconShield, IconSpark, IconUser } from "../components/Icons";
+import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconUser } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
@@ -254,12 +254,7 @@ function ChatView({ conversation }: { conversation: Conversation }) {
       <header className="chat-head">
         <div className="chat-head-id">
           <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
-          <div style={{ minWidth: 0 }}>
-            <div className="chat-head-name">{contactName(conversation.displayName)}</div>
-            <div className="chat-head-sub">
-              {formatPhone(conversation.phone)} · {ident}
-            </div>
-          </div>
+          <ContactHeader conversation={conversation} ident={ident} />
         </div>
         {conversation.state !== "ignorado" &&
           (humanMode ? (
@@ -299,6 +294,93 @@ function ChatView({ conversation }: { conversation: Conversation }) {
       </div>
       <Composer conversation={conversation} />
     </section>
+  );
+}
+
+/** Nome no topo da conversa, com "~nome do perfil" e o botão de renomear/salvar contato. */
+function ContactHeader({ conversation, ident }: { conversation: Conversation; ident: string }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [toPhone, setToPhone] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    setEditing(false);
+    setNote(null);
+  }, [conversation.id]);
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 5000);
+    return () => clearTimeout(t);
+  }, [note]);
+  const open = () => {
+    setName(conversation.savedName ?? conversation.customerName ?? conversation.pushName ?? "");
+    setEditing(true);
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.saveContact(conversation.id, name, toPhone);
+      setNote(r.message);
+      setEditing(false);
+    } catch (e) {
+      setNote(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "Não foi possível salvar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const showPush = conversation.pushName && conversation.pushName !== conversation.displayName;
+  if (editing)
+    return (
+      <form
+        className="contact-edit"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <input
+          className="input"
+          autoFocus
+          value={name}
+          maxLength={80}
+          placeholder={conversation.pushName ?? "Nome do contato"}
+          aria-label="Nome do contato"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
+        />
+        <label className="check-inline">
+          <input type="checkbox" checked={toPhone} onChange={(e) => setToPhone(e.target.checked)} />
+          Salvar também nos contatos do WhatsApp
+        </label>
+        <div className="btn-row">
+          <button type="button" className="btn sm" onClick={() => setEditing(false)} disabled={busy}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn sm primary" disabled={busy}>
+            {busy ? "Salvando…" : "Salvar"}
+          </button>
+        </div>
+      </form>
+    );
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div className="chat-head-name">
+        {contactName(conversation.displayName)}
+        <button className="icon-btn sm rename-btn" onClick={open} aria-label="Renomear e salvar contato" title="Renomear e salvar contato">
+          <IconPencil size={14} />
+        </button>
+      </div>
+      <div className="chat-head-sub">
+        {formatPhone(conversation.phone)}
+        {showPush && <span className="push-name"> · ~{conversation.pushName}</span>} · {ident}
+      </div>
+      {note && (
+        <div className="chat-head-note" role="status">
+          {note}
+        </div>
+      )}
+    </div>
   );
 }
 

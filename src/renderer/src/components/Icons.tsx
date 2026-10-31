@@ -191,3 +191,10 @@ export const IconLogo = (p: P) => (
     <path d="M4 12a8 8 0 1 1 3 6.3L4 20l1.2-3.5" />
   </Svg>
 );
+
+export const IconPencil = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+  </Svg>
+);

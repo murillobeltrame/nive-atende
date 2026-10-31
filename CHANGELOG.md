@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.2.15 — 2026-10-31
+
+- Nome do contato: as conversas mostram o nome que a pessoa definiu no próprio WhatsApp (também atualizado pela agenda de contatos do WhatsApp embutido).
+- Renomear e salvar contato: botão de lápis no topo da conversa. O nome fica salvo no app e, se marcado, também nos contatos do WhatsApp (só no WhatsApp embutido). Deixar em branco volta ao nome do perfil. O nome do perfil continua visível como "~nome".
+
 ## v0.2.14 — 2026-10-31
 
 - Foto de perfil do contato nas conversas, quando ele deixa a foto pública no WhatsApp (guardada por 24 h).

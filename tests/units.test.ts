@@ -123,3 +123,17 @@ describe("configurações", () => {
     expect(() => s.setSecret("niveApiKey", "sl_live_x")).toThrow();
   });
 });
+
+import { Store as Store2 } from "../src/main/store/db";
+
+describe("nome do contato", () => {
+  it("nome salvo pelo lojista > nome do perfil > telefone", () => {
+    const st = new Store2(":memory:");
+    const jid = "5548920025980@s.whatsapp.net";
+    expect(st.ensureConversation(jid, "5548920025980", "").displayName).toBe("5548920025980");
+    expect(st.ensureConversation(jid, "5548920025980", "Nathy").displayName).toBe("Nathy");
+    expect(st.setSavedName(jid, "Nathalia Rocker Beltrame").displayName).toBe("Nathalia Rocker Beltrame");
+    expect(st.getConversation(jid)!.pushName).toBe("Nathy");
+    expect(st.setSavedName(jid, "").displayName).toBe("Nathy");
+  });
+});

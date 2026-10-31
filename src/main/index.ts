@@ -160,6 +160,11 @@ function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void
   for (const ev of events) {
     if (ev.type === "message") void engine.handleInbound(ev).catch((e) => console.error("[whatsapp]", e));
     else if (ev.type === "revoke") engine.handleRevoke(ev.remoteJid, ev.waMessageId);
+    else if (ev.type === "contact") {
+      const before = store.getConversation(ev.jid);
+      const after = before ? store.setPushName(ev.jid, ev.name) : null;
+      if (after && after.pushName !== before?.pushName) send(EVENTS.conversation, after);
+    }
     else if (ev.type === "connection") {
       monitor.setWhatsappState(ev.state);
       if (ev.state === "open") emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
@@ -546,6 +551,28 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   resendSticker: (id, messageId) => engine.resendSticker(id, messageId, settings.get().app.operatorName),
   deleteMessage: (messageId) => engine.deleteMessage(messageId),
   getAvatar: (conversationId) => getAvatar(conversationId),
+  saveContact: async (conversationId, name, saveToPhone) => {
+    if (!store.getConversation(conversationId)) throw new Error("Conversa não encontrada");
+    const conv = store.setSavedName(conversationId, name);
+    send(EVENTS.conversation, conv);
+    let savedOnPhone = false;
+    let message = name.trim() ? "Nome salvo no app." : "Voltou a usar o nome do perfil do contato.";
+    if (saveToPhone && name.trim()) {
+      const save = wa().saveContact;
+      if (!save) message = "Nome salvo no app. Salvar na agenda do celular só funciona com o WhatsApp embutido.";
+      else {
+        try {
+          await save.call(wa(), conversationId, name.trim());
+          savedOnPhone = true;
+          message = "Nome salvo no app e nos contatos do WhatsApp.";
+        } catch (e) {
+          log("whatsapp", "warn", "falha ao salvar contato", e);
+          message = "Nome salvo no app, mas não deu para salvar nos contatos do WhatsApp agora.";
+        }
+      }
+    }
+    return { conversation: conv, savedOnPhone, message };
+  },
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),

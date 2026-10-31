@@ -338,6 +338,20 @@ export class BaileysService implements WhatsAppService {
       }
     });
 
+    // nome do perfil dos contatos (o que cada um definiu no próprio WhatsApp)
+    const onContacts = (list: Array<{ id?: string; notify?: string; verifiedName?: string; phoneNumber?: string }>) => {
+      const out: EvolutionEvent[] = [];
+      for (const c of list) {
+        const name = c.notify || c.verifiedName;
+        if (!name) continue;
+        if (c.id) out.push({ type: "contact", jid: c.id, name });
+        if (c.phoneNumber && c.phoneNumber !== c.id) out.push({ type: "contact", jid: c.phoneNumber, name });
+      }
+      if (out.length) this.emit(out);
+    };
+    sock.ev.on("contacts.upsert", (l) => onContacts(l as never));
+    sock.ev.on("contacts.update", (l) => onContacts(l as never));
+
     sock.ev.on("messages.update", (updates) => {
       for (const u of updates) {
         const status = (u.update as { status?: number } | undefined)?.status;
@@ -438,6 +452,12 @@ export class BaileysService implements WhatsAppService {
     } catch {
       /* opcional */
     }
+  }
+
+  async saveContact(jid: string, name: string): Promise<void> {
+    const sock = this.requireSock();
+    const parts = name.trim().split(/\s+/);
+    await sock.addOrEditContact(jid, { fullName: name.trim(), firstName: parts[0], saveOnPrimaryAddressbook: true });
   }
 
   async getProfilePictureUrl(jid: string): Promise<string | null> {

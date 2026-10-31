@@ -1,7 +1,7 @@
 {
   "name": "nive-atende",
   "productName": "Nive Atende",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Atendente automático de WhatsApp para lojistas Nive",
   "author": "Nive Sistemas",
   "private": true,
