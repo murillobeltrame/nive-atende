@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pauseOnHumanMinutes: 120,
     ignoredNumbers: [],
     catchUpWindowMinutes: 120,
+    onlyStoreTopics: true,
   },
   reservation: { autoEnabled: false, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true },
   accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },

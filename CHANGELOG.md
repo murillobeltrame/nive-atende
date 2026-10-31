@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.2.10 — 2026-10-31
+
+- "Responder só assuntos da loja" (ligado por padrão, em Configurações → Atendimento): antes de responder, a IA confere se a mensagem é sobre a loja. Conversa pessoal (família, amigos, fornecedores, representantes) fica sem resposta automática, sem "digitando…" e sem alerta, e aparece na conversa como "A IA não respondeu: parece conversa pessoal".
+- Contatos pessoais não recebem o aviso de fora do horário.
+- No meio de um atendimento da IA a análise não é repetida a cada mensagem (economiza e não atrasa). Se a análise falhar, o atendimento segue normal.
+
 ## v0.2.9 — 2026-10-31
 
 - Botão "Cancelar reserva" na tela de Reservas (com confirmação): cancela o rascunho no sistema Nive, as peças voltam ao estoque e a reserva aparece como "Cancelada". Venda já finalizada não é cancelada por aqui.

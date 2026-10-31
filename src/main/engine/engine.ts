@@ -1,6 +1,7 @@
 // Motor de atendimento: recebe eventos do WhatsApp, decide quando a IA responde e grava quem respondeu.
 import { EventEmitter } from "node:events";
 import { prettyName, toWhatsApp } from "../ai/format";
+import { classifyTopic } from "../ai/topic";
 import type { AppSettings, ChatMessage, Conversation, Reservation, ReservationCustomerStatus, SystemEventType } from "../../shared/types";
 import type { Store } from "../store/db";
 import type { NiveApi, NiveProduct } from "../nive/client";
@@ -352,7 +353,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!isWithinBusinessHours(s, this.now())) {
       store.markProcessed(ids);
       const last = store.getOutOfHoursNoticeAt(conv.id);
-      if (!last || this.now() - last > OUT_OF_HOURS_NOTICE_INTERVAL_MS) {
+      if ((!last || this.now() - last > OUT_OF_HOURS_NOTICE_INTERVAL_MS) && !this.isRecentlyPersonal(conv.id)) {
         await this.sendAiText(conv.id, s.attendance.outOfHoursMessage, { countsAsAiReply: false });
         store.updateConversation(conv.id, { outOfHoursNoticeAt: this.now() });
       }
@@ -365,6 +366,23 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (aiToday >= s.ai.maxAiRepliesPerConversationPerDay) {
       store.markProcessed(ids);
       return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa");
+    }
+
+    // conversa pessoal do dono com esse contato? então não interfere
+    if (s.attendance.onlyStoreTopics && !this.inActiveAiConversation(conv.id)) {
+      const verdict = await this.checkTopic(conv.id);
+      if (verdict && !verdict.store) {
+        store.markProcessed(ids);
+        store.setKv(`personal:${conv.id}`, this.now());
+        const reason = verdict.reason ? ` (${verdict.reason})` : "";
+        store.addAiAction(conv.id, { at: this.now(), label: `Não respondeu: parece conversa pessoal${reason}`, kind: "info" });
+        if (!this.isRecentlyPersonal(conv.id, 6 * 60 * 60 * 1000, true)) {
+          this.addSystemEvent(conv.id, "personal", `A IA não respondeu: parece conversa pessoal, não assunto da loja${reason}`);
+        }
+        store.setKv(`personalNotice:${conv.id}`, this.now());
+        this.emit("conversation", store.getConversation(conv.id)!);
+        return;
+      }
     }
 
     // a partir daqui a IA vai trabalhar: o cliente vê "digitando…" enquanto ela busca e responde
@@ -453,6 +471,31 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (reply) await this.sendAiText(conv.id, reply, { countsAsAiReply: true });
     if (state.handoffReason) return this.handoff(conv.id, state.handoffReason, false);
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
+  }
+
+  /** A IA está no meio de um atendimento (respondeu há pouco e ninguém da loja entrou depois)? */
+  private inActiveAiConversation(conversationId: string): boolean {
+    const msgs = this.deps.store.listMessages(conversationId, 30).filter((m) => m.origin !== "consumidor" && m.origin !== "sistema");
+    const last = msgs.at(-1);
+    return Boolean(last && last.origin === "ia" && this.now() - last.createdAt < 30 * 60 * 1000);
+  }
+
+  private isRecentlyPersonal(conversationId: string, windowMs = 30 * 24 * 60 * 60 * 1000, noticeOnly = false): boolean {
+    const at = this.deps.store.getKv<number>(`${noticeOnly ? "personalNotice" : "personal"}:${conversationId}`);
+    return typeof at === "number" && this.now() - at < windowMs;
+  }
+
+  private async checkTopic(conversationId: string): Promise<{ store: boolean; reason: string } | null> {
+    try {
+      const v = await classifyTopic(this.deps.ai, this.s.openai.model, this.buildHistory(conversationId));
+      const cost = estimateChatCost(this.s.openai.model, v.inputTokens, v.outputTokens);
+      this.deps.store.addUsage(this.now(), { inputTokens: v.inputTokens, outputTokens: v.outputTokens, costUsd: cost });
+      const c = this.deps.store.getConversation(conversationId)!;
+      this.deps.store.updateConversation(conversationId, { costUsd: c.costUsd + cost });
+      return v;
+    } catch {
+      return null; // falhou a análise: segue o atendimento normal
+    }
   }
 
   /** Mostra "digitando…" para o cliente e renova a cada 8 s (o WhatsApp apaga sozinho depois de uns 25 s). */

@@ -649,6 +649,12 @@ function AttendanceSection({ settings, onSettings }: Pick<Props, "settings" | "o
             hint="Desligado, o programa só mostra as conversas; ninguém recebe resposta automática."
           />
           <Check
+            label="Responder só assuntos da loja"
+            checked={d.onlyStoreTopics ?? true}
+            onChange={(v) => setD({ ...d, onlyStoreTopics: v })}
+            hint="Antes de responder, a IA confere se a mensagem é sobre a loja. Conversa pessoal (família, amigos, fornecedores) fica sem resposta automática, para você responder."
+          />
+          <Check
             label="Respeitar horário de funcionamento"
             checked={bh.enabled}
             onChange={(v) => setD({ ...d, businessHours: { ...bh, enabled: v } })}

@@ -117,6 +117,7 @@ export function createMockApi(): NiveAtendeApi {
       pauseOnHumanMinutes: 120,
       ignoredNumbers: ["5548999990001"],
       catchUpWindowMinutes: 120,
+      onlyStoreTopics: true,
     },
     reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true },
     accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },

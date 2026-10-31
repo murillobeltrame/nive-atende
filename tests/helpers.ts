@@ -233,7 +233,7 @@ export async function flushPromises(): Promise<void> {
 
 export function makeSettings(patch: DeepPartial<AppSettings> = {}): AppSettings {
   const base = deepMerge(structuredClone(DEFAULT_SETTINGS), {
-    attendance: { autoEnabled: true, replyDelayMinSec: 1, replyDelayMaxSec: 1 },
+    attendance: { autoEnabled: true, replyDelayMinSec: 1, replyDelayMaxSec: 1, onlyStoreTopics: false },
     personality: { storeName: "Loja Exemplo" },
     termsAcceptedAt: 1,
   });

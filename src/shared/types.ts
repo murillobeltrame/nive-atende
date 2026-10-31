@@ -54,6 +54,7 @@ export type SystemEventType =
   | "reservation_created"
   | "reservation_pending"
   | "reservation_expired"
+  | "personal" // IA não respondeu: conversa pessoal
   | "paused_by_phone" // humano respondeu pelo celular
   | "error";
 
@@ -151,6 +152,8 @@ export interface AppSettings {
     pauseOnHumanMinutes: number;
     ignoredNumbers: string[];
     catchUpWindowMinutes: number;
+    /** Antes de responder, confere se a conversa é assunto da loja (conversa pessoal fica para o humano). */
+    onlyStoreTopics: boolean;
   };
   reservation: {
     autoEnabled: boolean;
