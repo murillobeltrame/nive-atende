@@ -144,4 +144,27 @@ describe("WhatsApp embutido (Baileys)", () => {
     await t.svc.start();
     expect(t.sockets).toHaveLength(1);
   });
+
+  it("depois de ler o QR (reinício 515) não avisa queda: segue conectando", async () => {
+    const t = setup();
+    void t.svc.connect();
+    await tick();
+    t.sockets[0]!.ev.emit("connection.update", { qr: "2@x" });
+    await tick();
+    t.events.length = 0;
+    t.sockets[0]!.ev.emit("connection.update", { connection: "close", lastDisconnect: { error: { output: { statusCode: 515 } } } });
+    await tick();
+    expect(t.events.some((e) => e.type === "connection" && e.state === "close")).toBe(false);
+    expect(t.sockets).toHaveLength(2); // reabriu
+  });
+
+  it("para de gerar QR depois de vários sem leitura e avisa que expirou", async () => {
+    const t = setup();
+    void t.svc.connect();
+    await tick();
+    for (let i = 0; i < 7; i++) t.sockets[0]!.ev.emit("connection.update", { qr: `2@q${i}` });
+    await tick();
+    expect(t.sockets[0]!.ended).toBe(true);
+    expect(t.events.some((e) => e.type === "qr" && e.qrBase64 === null)).toBe(true);
+  });
 });

@@ -8,8 +8,12 @@ export function QrModal({ onClose }: { onClose: () => void }) {
   const [qr, setQr] = useState<QrState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let closed = false;
+    setQr(null);
+    setError(null);
     const off = api.onQr((q) => {
       if (closed) return;
       setQr(q);
@@ -22,7 +26,9 @@ export function QrModal({ onClose }: { onClose: () => void }) {
       closed = true;
       off();
     };
-  }, []);
+  }, [attempt]);
+
+  const expired = qr?.state === "close";
 
   useEffect(() => {
     if (qr?.state === "open") {
@@ -40,8 +46,12 @@ export function QrModal({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="qr-box">
           <div className="qr-img">
-            {qr?.qrBase64 ? (
+            {qr?.qrBase64 && !expired ? (
               <img src={qr.qrBase64} alt="QR Code para conectar o WhatsApp" />
+            ) : expired ? (
+              <button className="btn primary" onClick={() => setAttempt((a) => a + 1)}>
+                Gerar novo código
+              </button>
             ) : (
               <span>Gerando QR Code…</span>
             )}

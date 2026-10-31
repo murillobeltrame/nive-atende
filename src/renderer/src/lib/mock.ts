@@ -660,6 +660,9 @@ export function createMockApi(): NiveAtendeApi {
     async openExternal(url) {
       window.open(url, "_blank", "noopener");
     },
+    async openLogs() {
+      /* sem registros no modo de demonstração */
+    },
     async getAppInfo() {
       return { version: "0.1.0 (simulação)", platform: "browser" };
     },

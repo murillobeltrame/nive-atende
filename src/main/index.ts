@@ -18,6 +18,7 @@ import type { WhatsAppService } from "./whatsapp/service";
 import { Engine } from "./engine/engine";
 import { StatusMonitor } from "./status/monitor";
 import { registeredToJid, digitsOnly } from "./engine/phone";
+import { initLog, log, logDir } from "./log";
 
 const isDev = Boolean(process.env.NIVE_ATENDE_DEV_URL);
 
@@ -37,6 +38,8 @@ function resourcePath(...p: string[]): string {
 
 // ------------------------------------------------------------------ serviços
 mkdirSync(app.getPath("userData"), { recursive: true });
+initLog(app.getPath("userData"));
+log("app", "info", `Nive Atende ${app.getVersion()} iniciado (${process.platform} ${process.arch}, Electron ${process.versions.electron})`);
 const store = new Store(join(app.getPath("userData"), "nive-atende.sqlite"));
 const settings = new SettingsService(store, {
   isAvailable: () => safeStorage.isEncryptionAvailable(),
@@ -122,7 +125,15 @@ function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void
     else if (ev.type === "connection") {
       monitor.setWhatsappState(ev.state);
       if (ev.state === "open") emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
-    } else if (ev.type === "qr") emitQr({ state: "connecting", qrBase64: ev.qrBase64, pairingCode: ev.pairingCode, message: null });
+      else if (ev.state === "close")
+        emitQr({ state: "close", qrBase64: null, pairingCode: null, message: "A conexão caiu antes de concluir. Clique em Gerar novo código." });
+    } else if (ev.type === "qr") {
+      emitQr(
+        ev.qrBase64
+          ? { state: "connecting", qrBase64: ev.qrBase64, pairingCode: ev.pairingCode, message: null }
+          : { state: "close", qrBase64: null, pairingCode: null, message: "O código expirou. Clique em Gerar novo código." },
+      );
+    }
     else if (ev.type === "ack") engine.handleAck(ev.waMessageId, ev.status);
   }
 }
@@ -486,6 +497,10 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     if (/^https:\/\//.test(url)) await shell.openExternal(url);
   },
   getAppInfo: () => ({ version: app.getVersion(), platform: process.platform }),
+  openLogs: async () => {
+    const d = logDir();
+    if (d) await shell.openPath(d);
+  },
 };
 
 for (const [method, fn] of Object.entries(handlers)) {

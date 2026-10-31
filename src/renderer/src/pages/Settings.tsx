@@ -882,11 +882,12 @@ function AppSection({ settings, onSettings }: Pick<Props, "settings" | "onSettin
         </div>
       </div>
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ app: d }))} />
-      {version && (
-        <p className="card-sub" style={{ marginTop: 20 }}>
-          Nive Atende versão {version}
-        </p>
-      )}
+      <div className="btn-row" style={{ marginTop: 20 }}>
+        {version && <span className="card-sub" style={{ margin: 0 }}>Nive Atende versão {version}</span>}
+        <button className="btn" onClick={() => void api.openLogs()}>
+          Abrir registros (para suporte)
+        </button>
+      </div>
     </>
   );
 }

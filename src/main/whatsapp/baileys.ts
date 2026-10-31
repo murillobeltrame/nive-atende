@@ -9,6 +9,7 @@ import { parseMessage, type EvolutionEvent } from "../evolution/parse";
 import type { Transcoder } from "../audio/transcode";
 import type { TestResult } from "../../shared/types";
 import type { EngineHealth, WhatsAppService } from "./service";
+import { baileysLogger, log } from "../log";
 
 type BaileysModule = typeof import("baileys");
 
@@ -67,6 +68,7 @@ export class BaileysService implements WhatsAppService {
   private qrCount = 0;
   private raw = new Map<string, WAMessage>();
   private loadError: string | null = null;
+  private cachedVersion: { v: [number, number, number]; at: number } | null = null;
 
   constructor(private readonly deps: BaileysDeps) {}
 
@@ -194,16 +196,48 @@ export class BaileysService implements WhatsAppService {
     }, wait);
   }
 
+  /**
+   * Versão atual do WhatsApp Web. O WhatsApp recusa o pareamento ("Verifique sua conexão") quando a
+   * versão informada é antiga, e a que vem embutida no Baileys envelhece com o tempo.
+   */
+  private async waVersion(b: BaileysModule): Promise<[number, number, number] | undefined> {
+    if (this.cachedVersion && Date.now() - this.cachedVersion.at < 6 * 3600_000) return this.cachedVersion.v;
+    try {
+      const r = await b.fetchLatestWaWebVersion({ signal: AbortSignal.timeout(8000) } as never);
+      if (r.isLatest && Array.isArray(r.version)) {
+        this.cachedVersion = { v: r.version as [number, number, number], at: Date.now() };
+        log("whatsapp", "info", `versão do WhatsApp Web: ${r.version.join(".")}`);
+        return this.cachedVersion.v;
+      }
+      log("whatsapp", "warn", "não foi possível obter a versão atual do WhatsApp Web; usando a padrão", r.error);
+    } catch (e) {
+      log("whatsapp", "warn", "falha ao obter a versão do WhatsApp Web", e);
+    }
+    try {
+      const r = await b.fetchLatestBaileysVersion({ signal: AbortSignal.timeout(8000) } as never);
+      if (Array.isArray(r.version)) return r.version as [number, number, number];
+    } catch {
+      /* usa a padrão do Baileys */
+    }
+    return undefined;
+  }
+
   private async open(): Promise<void> {
     const b = await (this.deps.load ?? loadBaileys)();
     mkdirSync(this.deps.authDir, { recursive: true });
     const { state, saveCreds } = await b.useMultiFileAuthState(this.deps.authDir);
     this.sock?.end(undefined);
     this.setState("connecting");
+    const version = this.deps.load ? undefined : await this.waVersion(b);
+    const logger = this.deps.load ? silentLogger : baileysLogger();
+    log("whatsapp", "info", `abrindo conexão (sessão ${state.creds.registered ? "pareada" : "nova"})`);
     const sock = b.makeWASocket({
-      auth: { creds: state.creds, keys: b.makeCacheableSignalKeyStore(state.keys, silentLogger as never) },
-      logger: silentLogger as never,
-      browser: ["Nive Atende", "Chrome", this.deps.appVersion ?? "1.0"],
+      ...(version ? { version } : {}),
+      auth: { creds: state.creds, keys: b.makeCacheableSignalKeyStore(state.keys, logger as never) },
+      logger: logger as never,
+      browser: b.Browsers?.macOS ? (process.platform === "win32" ? b.Browsers.windows("Desktop") : b.Browsers.macOS("Desktop")) : ["Mac OS", "Desktop", "14.4.1"],
+      connectTimeoutMs: 60_000,
+      qrTimeout: 40_000,
       syncFullHistory: false,
       markOnlineOnConnect: false,
       shouldSyncHistoryMessage: () => false,
@@ -224,9 +258,12 @@ export class BaileysService implements WhatsAppService {
         // ninguém leu depois de vários QRs: para de gerar até pedirem de novo
         if (this.qrCount > 6 && !state.creds.registered) {
           this.wanted = false;
+          this.lastQr = null;
           sock.end(undefined);
+          this.emit([{ type: "qr", qrBase64: null, pairingCode: null }]);
         }
       }
+      if (u.connection) log("whatsapp", "info", `conexão: ${u.connection}`);
       if (u.connection === "open") {
         this.lastQr = null;
         this.backoffMs = 2000;
@@ -236,6 +273,7 @@ export class BaileysService implements WhatsAppService {
         this.setState("connecting");
       } else if (u.connection === "close") {
         const code = (u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+        log("whatsapp", code === 515 ? "info" : "warn", `conexão fechada (código ${code ?? "?"})`, u.lastDisconnect?.error);
         this.sock = null;
         this.lastQr = null;
         if (code === b.DisconnectReason.loggedOut) {
@@ -245,11 +283,12 @@ export class BaileysService implements WhatsAppService {
           this.setState("close");
           return;
         }
-        this.setState("close");
         if (code === b.DisconnectReason.restartRequired) {
+          // normal logo depois de ler o QR: reabre a conexão já pareada
           void this.open();
           return;
         }
+        this.setState("close");
         if (state.creds.registered || this.hasSession()) this.scheduleReconnect();
       }
     });

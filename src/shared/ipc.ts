@@ -68,6 +68,8 @@ export interface NiveAtendeApi {
   // utilidades
   openExternal(url: string): Promise<void>;
   getAppInfo(): Promise<AppInfo>;
+  /** Abre a pasta de registros (logs) do app. */
+  openLogs(): Promise<void>;
 
   // eventos (retornam função para cancelar a inscrição)
   onStatus(cb: (s: StatusSnapshot) => void): () => void;
@@ -123,6 +125,7 @@ export const RPC_METHODS = [
   "listAudit",
   "openExternal",
   "getAppInfo",
+  "openLogs",
 ] as const satisfies ReadonlyArray<keyof NiveAtendeApi>;
 
 export type RpcMethod = (typeof RPC_METHODS)[number];
