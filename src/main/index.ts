@@ -118,6 +118,13 @@ const engine = new Engine({
   transcode: createFfmpegTranscoder(),
   blockedReason: () => monitor.blockedReason(),
 });
+let lastReservationSync = 0;
+function syncReservations(): void {
+  if (Date.now() - lastReservationSync < 20_000) return;
+  lastReservationSync = Date.now();
+  void engine.syncReservationsWithErp().catch((e) => log("app", "warn", "falha ao conferir reservas no sistema", e));
+}
+
 
 function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void {
   if (source !== wa()) return; // eventos do modo inativo são ignorados
@@ -511,7 +518,10 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),
-  listReservations: () => store.listReservations(),
+  listReservations: async () => {
+    syncReservations(); // atualiza em segundo plano; mudanças chegam pelo evento de reserva
+    return store.listReservations();
+  },
   approveReservation: (id) => engine.approveReservation(id),
   rejectReservation: (id) => engine.rejectReservation(id),
   getUsage: () => usageSummary(),
@@ -565,6 +575,9 @@ void app.whenReady().then(async () => {
   const sweepReservations = () => void engine.sweepExpiredReservations().catch((e) => log("app", "warn", "falha ao verificar reservas vencidas", e));
   setTimeout(sweepReservations, 30_000);
   setInterval(sweepReservations, 5 * 60_000);
+  // rascunhos finalizados/excluídos no ERP
+  setTimeout(syncReservations, 20_000);
+  setInterval(syncReservations, 2 * 60_000);
   // impede que o sistema suspenda o app (não o PC) enquanto ele está aberto
   powerSaveBlocker.start("prevent-app-suspension");
 });

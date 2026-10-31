@@ -90,7 +90,7 @@ export interface Conversation {
 
 export type ConversationFilter = "todas" | "precisa" | "ia" | "humano";
 
-export type ReservationStatus = "pending_approval" | "created" | "failed" | "rejected" | "expired" | "completed";
+export type ReservationStatus = "pending_approval" | "created" | "failed" | "rejected" | "expired" | "completed" | "removed";
 
 /** Como a reserva se liga ao cadastro de clientes do ERP. */
 export type ReservationCustomerStatus =

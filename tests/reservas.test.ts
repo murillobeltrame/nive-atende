@@ -141,3 +141,33 @@ describe("API Nive: clientes e rascunhos", () => {
     expect(await client({}).c.cancelDraftSale("s1", "x")).toBe("not_found");
   });
 });
+
+describe("reserva acompanhada no ERP", () => {
+  it("rascunho finalizado vira Finalizada; excluído ou cancelado vira Removida", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const a = await ask(t, "Pedro Alves");
+    t.nive.saleStatus[a.saleId!] = "COMPLETED";
+    await t.engine.sweepExpiredReservations();
+    await t.engine.syncReservationsWithErp();
+    expect(t.store.getReservation(a.id)).toMatchObject({ status: "completed", orderNumber: 777 });
+
+    const t2 = setup({ settings: { reservation: { autoEnabled: true } } });
+    const b = await ask(t2, "Pedro Alves");
+    t2.nive.saleStatus[b.saleId!] = "GONE";
+    await t2.engine.syncReservationsWithErp();
+    expect(t2.store.getReservation(b.id)!.status).toBe("removed");
+
+    const t3 = setup({ settings: { reservation: { autoEnabled: true } } });
+    const c = await ask(t3, "Pedro Alves");
+    t3.nive.saleStatus[c.saleId!] = "DRAFT_CANCELLED";
+    await t3.engine.syncReservationsWithErp();
+    expect(t3.store.getReservation(c.id)!.status).toBe("removed");
+  });
+
+  it("rascunho ainda aberto continua como está", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const a = await ask(t, "Pedro Alves");
+    await t.engine.syncReservationsWithErp();
+    expect(t.store.getReservation(a.id)!.status).toBe("created");
+  });
+});

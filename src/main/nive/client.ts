@@ -91,6 +91,8 @@ export interface NiveApi {
   /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
   findCustomersByName(name: string): Promise<NiveCustomer[]>;
   createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer>;
+  /** Situação atual da venda no ERP. */
+  getSaleState(saleId: string): Promise<{ state: "draft" | "completed" | "cancelled" | "not_found"; orderNumber: number | null }>;
   /** Cancela um rascunho (mantém o histórico no ERP). Não mexe em venda já finalizada. */
   cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found">;
 }
@@ -327,19 +329,27 @@ export class NiveClient implements NiveApi {
     return toCustomer(raw);
   }
 
-  async cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found"> {
-    const id = encodeURIComponent(saleId);
+  async getSaleState(saleId: string): Promise<{ state: "draft" | "completed" | "cancelled" | "not_found"; orderNumber: number | null }> {
     let sale: Json;
     try {
-      sale = await this.request<Json>("GET", `/sales/${id}`);
+      sale = await this.request<Json>("GET", `/sales/${encodeURIComponent(saleId)}`);
     } catch (e) {
-      if (e instanceof NiveApiError && e.status === 404) return "not_found";
+      if (e instanceof NiveApiError && e.status === 404) return { state: "not_found", orderNumber: null };
       throw e;
     }
     const status = String(sale.status ?? "");
-    if (status === "DRAFT_CANCELLED" || status === "CANCELLED") return "cancelled";
-    if (status !== "DRAFT") return "not_draft";
-    await this.request("POST", `/sales/${id}/cancel-draft`, { reason: reason.slice(0, 500) });
+    const orderNumber = sale.orderNumber == null ? null : n(sale.orderNumber);
+    if (status === "DRAFT") return { state: "draft", orderNumber };
+    if (status === "DRAFT_CANCELLED" || status === "CANCELLED") return { state: "cancelled", orderNumber };
+    return { state: "completed", orderNumber };
+  }
+
+  async cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found"> {
+    const { state } = await this.getSaleState(saleId);
+    if (state === "not_found") return "not_found";
+    if (state === "cancelled") return "cancelled";
+    if (state !== "draft") return "not_draft";
+    await this.request("POST", `/sales/${encodeURIComponent(saleId)}/cancel-draft`, { reason: reason.slice(0, 500) });
     return "cancelled";
   }
 

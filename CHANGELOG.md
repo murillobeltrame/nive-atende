@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.2.8 — 2026-10-31
+
+- Reservas acompanham o ERP: quando o rascunho é finalizado no sistema Nive, a reserva aparece como "Finalizada"; quando é excluído ou cancelado por lá, aparece como "Removida". A conferência roda a cada 2 minutos e ao abrir a tela de Reservas.
+- Tela de Reservas mais limpa: nome do produto legível, número do pedido no lugar do código interno da venda.
+
 ## v0.2.7 — 2026-10-31
 
 - Reserva em nome do cliente: a IA pergunta o nome completo quando o cliente não está identificado. O sistema procura esse nome no cadastro da Nive e, se não encontrar, cadastra o cliente novo (nome e telefone do WhatsApp) ao lançar o rascunho.

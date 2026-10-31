@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { approveLabel, customerInfo } from "../lib/reservation";
+import { prettyName } from "../../../shared/format";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
 import { listTime, money } from "../lib/format";
@@ -84,7 +85,7 @@ export function PendingPage({ onOpenConversation }: Props) {
                 <span className="tag tag-warn">RESERVA</span>
                 <div className="grow">
                   <div className="title">
-                    {r.quantity}× {r.productDescription} {r.variantLabel !== "Único" ? r.variantLabel : ""} · em nome de <b>{r.customerName}</b>
+                    {r.quantity}× {prettyName(r.productDescription)} {r.variantLabel !== "Único" ? r.variantLabel : ""} · em nome de <b>{r.customerName}</b>
                   </div>
                   <div className="desc">
                     {money(r.unitPrice * r.quantity)} · pedido às {listTime(r.createdAt)}

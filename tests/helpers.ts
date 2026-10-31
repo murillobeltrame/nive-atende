@@ -101,6 +101,11 @@ export class FakeNive implements NiveApi {
     this.namedCustomers.push(c);
     return c;
   }
+  async getSaleState(saleId: string) {
+    const st = this.saleStatus[saleId] ?? "DRAFT";
+    const state = st === "DRAFT" ? "draft" : st === "GONE" ? "not_found" : st.includes("CANCEL") ? "cancelled" : "completed";
+    return { state: state as "draft" | "completed" | "cancelled" | "not_found", orderNumber: 777 };
+  }
   async cancelDraftSale(saleId: string): Promise<"cancelled" | "not_draft" | "not_found"> {
     const st = this.saleStatus[saleId] ?? "DRAFT";
     if (st !== "DRAFT") return "not_draft";

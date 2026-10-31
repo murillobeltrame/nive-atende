@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Reservation, ReservationStatus } from "../../../shared/types";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
+import { prettyName } from "../../../shared/format";
 import { approveLabel, customerInfo } from "../lib/reservation";
 
 const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
@@ -10,7 +11,8 @@ const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
   failed: { label: "Falhou", cls: "tag-fail" },
   rejected: { label: "Recusada", cls: "tag-ignored" },
   expired: { label: "Vencida", cls: "tag-ignored" },
-  completed: { label: "Venda finalizada", cls: "tag-ok" },
+  completed: { label: "Finalizada", cls: "tag-ok" },
+  removed: { label: "Removida", cls: "tag-ignored" },
 };
 
 function dt(ts: number) {
@@ -89,18 +91,24 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                     </td>
                     <td>
                       <div>
-                        {r.quantity}× {r.productDescription}
+                        {r.quantity}× {prettyName(r.productDescription)}
                       </div>
-                      <div className="sub">{r.variantLabel}</div>
+                      {r.variantLabel !== "Único" && <div className="sub">{r.variantLabel}</div>}
                     </td>
                     <td>{money(r.unitPrice * r.quantity)}</td>
                     <td>
                       <span className={`tag ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
                       {r.status === "created" && (
                         <div className="sub" style={{ marginTop: 4 }}>
-                          {r.orderNumber ? `Pedido #${r.orderNumber}` : `Venda ${r.saleId ?? ""}`}
+                          {r.orderNumber ? `Pedido #${r.orderNumber}` : "Rascunho no sistema Nive"}
                         </div>
                       )}
+                      {(r.status === "completed" || r.status === "removed") && r.orderNumber && (
+                        <div className="sub" style={{ marginTop: 4 }}>
+                          Pedido #{r.orderNumber}
+                        </div>
+                      )}
+                      {r.status === "removed" && <div className="sub">Excluída ou cancelada no sistema Nive</div>}
                       {r.status === "failed" && r.error && (
                         <div className="sub" style={{ marginTop: 4, color: "var(--red-text)" }}>
                           {r.error}

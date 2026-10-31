@@ -993,6 +993,30 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   /**
+   * Confere no ERP os rascunhos das reservas ativas: finalizado vira "Finalizada";
+   * excluído ou cancelado por lá vira "Removida".
+   */
+  async syncReservationsWithErp(): Promise<void> {
+    const store = this.deps.store;
+    for (const r of store.listReservations(300)) {
+      if (r.status !== "created" || !r.saleId) continue;
+      try {
+        const { state, orderNumber } = await this.deps.nive.getSaleState(r.saleId);
+        if (orderNumber && orderNumber !== r.orderNumber) this.emit("reservation", store.updateReservation(r.id, { orderNumber }));
+        if (state === "completed") {
+          this.emit("reservation", store.updateReservation(r.id, { status: "completed" }));
+          this.addSystemEvent(r.conversationId, "reservation_created", `Venda da reserva finalizada no sistema${orderNumber ? ` · pedido #${orderNumber}` : ""}`);
+        } else if (state === "cancelled" || state === "not_found") {
+          this.emit("reservation", store.updateReservation(r.id, { status: "removed" }));
+          this.addSystemEvent(r.conversationId, "reservation_expired", `Rascunho da reserva ${state === "not_found" ? "excluído" : "cancelado"} no sistema`);
+        }
+      } catch {
+        // ERP fora do ar: confere de novo depois
+      }
+    }
+  }
+
+  /**
    * Reservas vencidas: pedido não aprovado expira; rascunho que não virou venda é cancelado no ERP
    * (as peças voltam para a loja). Venda já finalizada não é tocada.
    */
