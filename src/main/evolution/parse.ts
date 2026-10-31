@@ -42,7 +42,14 @@ export interface AckEvent {
   status: string;
 }
 
-export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent;
+/** O cliente apagou uma mensagem "para todos". */
+export interface RevokeEvent {
+  type: "revoke";
+  remoteJid: string;
+  waMessageId: string;
+}
+
+export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent | RevokeEvent;
 
 function asObj(v: unknown): Json {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {};
@@ -166,6 +173,18 @@ export function parseMessage(data: Json): InboundMessage | null {
   };
 }
 
+/** Mensagem de protocolo "apagar para todos" (REVOKE): devolve qual mensagem foi apagada. */
+export function parseRevoke(data: Json): RevokeEvent | null {
+  const key = asObj(data.key);
+  const remoteJid = String(key.remoteJid ?? "");
+  const pm = asObj(unwrap(asObj(data.message)).protocolMessage);
+  if (!remoteJid || !Object.keys(pm).length) return null;
+  const t = pm.type;
+  if (!(t === 0 || t === "REVOKE" || t === "0")) return null;
+  const id = String(asObj(pm.key).id ?? "");
+  return id ? { type: "revoke", remoteJid, waMessageId: id } : null;
+}
+
 export function parseWebhook(body: unknown): EvolutionEvent[] {
   const root = asObj(body);
   const event = normalizeEvent(root.event);
@@ -175,6 +194,11 @@ export function parseWebhook(body: unknown): EvolutionEvent[] {
   if (event === "messages.upsert" || event === "send.message") {
     const list = Array.isArray(data) ? data : Array.isArray(asObj(data).messages) ? (asObj(data).messages as unknown[]) : [data];
     for (const item of list) {
+      const r = parseRevoke(asObj(item));
+      if (r) {
+        out.push(r);
+        continue;
+      }
       const m = parseMessage(asObj(item));
       if (m) out.push(m);
     }
@@ -188,6 +212,12 @@ export function parseWebhook(body: unknown): EvolutionEvent[] {
       qrBase64: (qr.base64 ?? asObj(data).base64 ?? null) as string | null,
       pairingCode: (qr.pairingCode ?? null) as string | null,
     });
+  } else if (event === "messages.delete") {
+    const o = asObj(data);
+    const key = asObj(o.key ?? o);
+    const id = String(key.id ?? o.id ?? "");
+    const remoteJid = String(key.remoteJid ?? o.remoteJid ?? "");
+    if (id && remoteJid) out.push({ type: "revoke", remoteJid, waMessageId: id });
   } else if (event === "messages.update") {
     const list = Array.isArray(data) ? data : [data];
     for (const item of list) {

@@ -157,6 +157,11 @@ export class FakeWa implements WhatsAppGateway {
     return this.next();
   }
   async sendPresence(): Promise<void> {}
+  deleted: Array<{ jid: string; id: string }> = [];
+  async deleteForEveryone(jid: string, id: string): Promise<void> {
+    if (this.fail) throw new Error("falha apagar");
+    this.deleted.push({ jid, id });
+  }
   async getMediaBase64(id: string) {
     return this.media[id] ?? null;
   }
@@ -227,6 +232,7 @@ export function setup(opts: { settings?: DeepPartial<AppSettings>; blocked?: () 
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
     echoGraceMs: 3000,
+    fetchImage: async (url) => (url.includes("exemplo") ? { data: Buffer.from("PNGDATA"), mime: "image/png" } : null),
   });
   return {
     store,

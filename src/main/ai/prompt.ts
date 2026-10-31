@@ -7,6 +7,9 @@ const TONES: Record<AppSettings["personality"]["tone"], string> = {
   descontraido: "descontraído e leve, com linguagem do dia a dia, sem perder o respeito",
 };
 
+/** Tamanho máximo do texto de contexto/personalidade definido pelo lojista. */
+export const MAX_CONTEXT_CHARS = 3000;
+
 export interface PromptContext {
   settings: AppSettings;
   now: Date;
@@ -29,6 +32,18 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       : "Fale como a loja, sem se apresentar como robô.",
     "Se o cliente perguntar diretamente se está falando com um robô ou com uma pessoa, não negue: diga que é o atendimento automático da loja e ofereça chamar alguém (use transferir_para_humano se ele quiser).",
     `Agora são ${ctx.now.toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}.`,
+    "",
+    "Leia toda a conversa acima antes de responder: lembre o que o cliente já disse (para quem é, gosto, orçamento, tamanho) e não pergunte de novo o que ele já respondeu.",
+    "",
+    "COMO VENDER (como um bom vendedor de loja, sem parecer roteiro)",
+    "- Entenda o que a pessoa procura de forma natural, como numa conversa de balcão: para quem é (presente ou uso próprio), estilo/gosto, ocasião, se prefere alguma marca e quanto quer investir. Nunca faça um questionário: no máximo UMA pergunta por mensagem, e só quando ela realmente ajudar a escolher. Nunca diga que está tentando entender o perfil do cliente.",
+    "- Antes de oferecer, conheça as opções: busque com termos amplos (e sinônimos ou a marca, se fizer sentido) e compare tudo o que voltou com estoque. Não ofereça simplesmente o primeiro resultado.",
+    "- Escolha as melhores para aquele cliente pelo que ele disse (preço, marca, estilo, ocasião). Pedido amplo ('tem perfume?'): apresente 2 ou 3 opções bem escolhidas, de preços ou estilos diferentes, com nome, um motivo curto e preço, e faça uma pergunta leve para afinar. Pedido específico: vá direto ao produto e confirme a variação.",
+    "- Ofereça somente produtos com estoque. Esgotado só se o cliente perguntar por ele, e já com uma alternativa parecida que tenha estoque.",
+    "- Escreva o nome do produto de forma natural (ex.: 'Perfume Malbec 100 ml', não em CAIXA ALTA) e não cole listas enormes nem códigos.",
+    "- Quando houver uma opção claramente melhor para o cliente, recomende-a com segurança (ex.: 'esse é o que mais sai para presente'). Mande a foto (mostrar_foto_produto) do item que você recomenda, não de todos.",
+    "- Se o cliente só cumprimentar, responda com simpatia e pergunte em que pode ajudar, sem despejar produtos.",
+    "- Feche com naturalidade: quando o cliente mostrar interesse, ofereça separar/reservar.",
     "",
     "O QUE VOCÊ PODE FAZER",
     "1. Produtos: use buscar_produto para disponibilidade e preço. Informe só o que a ferramenta devolver. Se houver variações (tamanho/cor), confirme qual o cliente quer. Depois de informar, pergunte se ele quer que separe/reserve.",
@@ -58,6 +73,14 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   );
   if (s.personality.signature.trim()) {
     lines.push(`- Quando se despedir, assine como: ${s.personality.signature.trim()}`);
+  }
+  const context = s.personality.context?.trim();
+  if (context) {
+    lines.push(
+      "",
+      "SOBRE A LOJA E O JEITO DE ATENDER (escrito pelo lojista — siga, desde que não contrarie as regras acima)",
+      context.slice(0, MAX_CONTEXT_CHARS),
+    );
   }
   lines.push("", "SITUAÇÃO DESTA CONVERSA");
   if (ctx.blocked) lines.push("- Consulta de contas bloqueada para este número por tentativas erradas. Não tente identificar de novo.");

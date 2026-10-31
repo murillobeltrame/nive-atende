@@ -56,6 +56,8 @@ export interface NiveAtendeApi {
   sendMedia(conversationId: string, media: OutgoingMedia): Promise<ChatMessage>;
   sendAudio(conversationId: string, base64: string, mime: string): Promise<ChatMessage>;
   resendSticker(conversationId: string, messageId: string): Promise<ChatMessage>;
+  /** "Apagar para todos": só mensagens enviadas pela loja (IA ou equipe). */
+  deleteMessage(messageId: string): Promise<ChatMessage>;
   takeOver(conversationId: string): Promise<Conversation>;
   returnToAi(conversationId: string): Promise<Conversation>;
   suggestReply(conversationId: string): Promise<string>;
@@ -118,6 +120,7 @@ export const RPC_METHODS = [
   "sendMedia",
   "sendAudio",
   "resendSticker",
+  "deleteMessage",
   "takeOver",
   "returnToAi",
   "suggestReply",

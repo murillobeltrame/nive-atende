@@ -126,8 +126,9 @@ export function createMockApi(): NiveAtendeApi {
       emojis: false,
       signature: "",
       presentAsAssistant: false,
+      context: "",
     },
-    ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30 },
+    ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40 },
     audio: { transcribe: true, maxSeconds: 120 },
     app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "Murillo" },
     termsAcceptedAt: params.get("terms") === "0" ? null : now - 86_400_000,
@@ -603,6 +604,13 @@ export function createMockApi(): NiveAtendeApi {
     },
     async resendSticker(conversationId) {
       return sendHuman(conversationId, { kind: "sticker", hasMedia: true, mediaMime: "image/webp" });
+    },
+    async deleteMessage(messageId) {
+      const m = messages.find((x) => x.id === messageId);
+      if (!m) throw new Error("Mensagem não encontrada");
+      m.status = "deleted";
+      ev.message.emit({ ...m });
+      return { ...m };
     },
     async takeOver(conversationId) {
       const c = findConv(conversationId);

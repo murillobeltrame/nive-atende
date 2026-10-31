@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { release } from "node:os";
 import type { WAMessage, WASocket } from "baileys";
 import type { ConnectionState, SendResult } from "../evolution/client";
-import { parseMessage, type EvolutionEvent } from "../evolution/parse";
+import { parseMessage, parseRevoke, type EvolutionEvent } from "../evolution/parse";
 import type { Transcoder } from "../audio/transcode";
 import type { TestResult } from "../../shared/types";
 import type { EngineHealth, WhatsAppService } from "./service";
@@ -358,6 +358,11 @@ export class BaileysService implements WhatsAppService {
   private async handleIncoming(b: BaileysModule, sock: WASocket, msg: WAMessage): Promise<void> {
     if (!msg.message) return;
     this.remember(msg);
+    const revoke = parseRevoke(msg as unknown as Record<string, unknown>);
+    if (revoke) {
+      this.emit([revoke]);
+      return;
+    }
     const parsed = parseMessage(msg as unknown as Record<string, unknown>);
     if (!parsed || parsed.ignorable) return;
     if (MEDIA_KINDS.has(parsed.kind) && !parsed.base64) {
@@ -423,6 +428,10 @@ export class BaileysService implements WhatsAppService {
     } catch {
       /* opcional */
     }
+  }
+
+  async deleteForEveryone(jid: string, waMessageId: string): Promise<void> {
+    await this.requireSock().sendMessage(jid, { delete: { remoteJid: jid, fromMe: true, id: waMessageId } } as never);
   }
 
   async getMediaBase64(waMessageId: string): Promise<{ base64: string; mimetype: string } | null> {

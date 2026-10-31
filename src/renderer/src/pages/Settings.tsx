@@ -61,6 +61,11 @@ function Check({ label, checked, onChange, hint }: { label: string; checked: boo
   );
 }
 
+const CONTEXT_PLACEHOLDER = `Somos uma loja de perfumes e cosméticos no centro da cidade, atendendo há 15 anos.
+Fale de forma carinhosa e chame a cliente pelo nome quando souber.
+Nossos campeões de venda são os perfumes importados; para presente, sugira os kits.
+Entregamos na cidade de segunda a sábado. Aceitamos Pix, cartão e crediário.`;
+
 function Text({
   label,
   value,
@@ -592,6 +597,14 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
               onChange={(v) => setAi({ ...ai, maxAiRepliesPerConversationPerDay: v })}
               hint="Depois disso, a conversa passa para você."
             />
+            <Num
+              label="Mensagens anteriores que a IA lê"
+              value={ai.historyMessages ?? 40}
+              min={6}
+              max={100}
+              onChange={(v) => setAi({ ...ai, historyMessages: v })}
+              hint="Quanto mais, melhor ela lembra da conversa (e um pouco maior o custo). Padrão: 40."
+            />
           </div>
         </div>
       </div>
@@ -849,6 +862,24 @@ function PersonalitySection({ settings, onSettings }: Pick<Props, "settings" | "
             hint="Mesmo desligado, se o cliente perguntar se é robô, o sistema não nega e oferece chamar uma pessoa."
           />
         </div>
+      </div>
+      <div className="card">
+        <h2 className="card-title">Contexto e personalidade da IA</h2>
+        <label className="field">
+          <span>Escreva como você quer que a IA atenda e o que ela precisa saber da loja</span>
+          <textarea
+            className="textarea"
+            rows={9}
+            maxLength={3000}
+            value={d.context ?? ""}
+            placeholder={CONTEXT_PLACEHOLDER}
+            onChange={(e) => setD({ ...d, context: e.target.value })}
+          />
+          <small>
+            Ex.: quem é o público, o que a loja vende mais, marcas que você destaca, horário, se entrega, formas de pagamento,
+            jeito de falar. As regras de segurança (contas, preços e descontos) continuam valendo. {(d.context ?? "").length}/3000
+          </small>
+        </label>
       </div>
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ personality: d }))} />
     </>

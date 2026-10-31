@@ -21,7 +21,7 @@ export type MessageKind =
   | "event"
   | "unknown";
 
-export type MessageStatus = "received" | "pending" | "sent" | "failed";
+export type MessageStatus = "received" | "pending" | "sent" | "failed" | "deleted";
 
 export interface ChatMessage {
   id: string;
@@ -154,8 +154,15 @@ export interface AppSettings {
     emojis: boolean;
     signature: string;
     presentAsAssistant: boolean;
+    /** Texto livre do lojista: jeito de atender, sobre a loja, o que destacar. */
+    context: string;
   };
-  ai: { monthlyAlertUsd: number; maxAiRepliesPerConversationPerDay: number };
+  ai: {
+    monthlyAlertUsd: number;
+    maxAiRepliesPerConversationPerDay: number;
+    /** Quantas mensagens anteriores da conversa a IA lê para responder. */
+    historyMessages: number;
+  };
   audio: { transcribe: boolean; maxSeconds: number };
   app: {
     launchAtLogin: boolean;

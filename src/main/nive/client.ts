@@ -35,6 +35,8 @@ export interface NiveProduct {
   tracksStock: boolean;
   imageUrl: string | null;
   variants: NiveVariant[];
+  brand?: string | null;
+  category?: string | null;
 }
 
 export interface NiveStatementItem {
@@ -104,6 +106,13 @@ function toCustomer(raw: Json): NiveCustomer {
   };
 }
 
+function nameOf(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === "string") return v;
+  const o = v as Json;
+  return o.name ? String(o.name) : o.description ? String(o.description) : null;
+}
+
 function toProduct(raw: Json, baseUrl: string): NiveProduct {
   const variants = Array.isArray(raw.variants) ? (raw.variants as Json[]) : [];
   let image = s(raw.imageUrl) ?? s(raw.thumbnailUrl);
@@ -117,6 +126,8 @@ function toProduct(raw: Json, baseUrl: string): NiveProduct {
     tracksStock: raw.tracksStock !== false,
     imageUrl: image,
     variants: variants.map((v) => ({ id: String(v.id), label: String(v.label ?? "Único"), stockQty: n(v.stockQty) })),
+    brand: nameOf(raw.brand) ?? s(raw.brandName),
+    category: nameOf(raw.category) ?? s(raw.categoryName),
   };
 }
 

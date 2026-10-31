@@ -126,6 +126,10 @@ export class EvolutionService implements WhatsAppService {
   sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void> {
     return this.deps.client.sendPresence(jid, presence, delayMs);
   }
+  deleteForEveryone(jid: string, waMessageId: string) {
+    return this.deps.client.deleteForEveryone(jid, waMessageId);
+  }
+
   getMediaBase64(waMessageId: string, remoteJid: string, fromMe: boolean) {
     return this.deps.client.getMediaBase64(waMessageId, remoteJid, fromMe);
   }

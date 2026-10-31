@@ -178,6 +178,64 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
   );
 }
 
+function Deleted({ m }: { m: ChatMessage }) {
+  const [show, setShow] = useState(false);
+  const original = m.transcript ?? m.text;
+  return (
+    <div className="deleted">
+      <i>🚫 Mensagem apagada</i>
+      {original && (
+        <button className="link-btn" onClick={() => setShow(!show)}>
+          {show ? "ocultar" : "ver original"}
+        </button>
+      )}
+      {show && original && <div className="deleted-original">{original}</div>}
+    </div>
+  );
+}
+
+function DeleteControl({ m }: { m: ChatMessage }) {
+  const [step, setStep] = useState<"idle" | "confirm" | "busy">("idle");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (step !== "confirm") return;
+    const t = setTimeout(() => setStep("idle"), 6000);
+    return () => clearTimeout(t);
+  }, [step]);
+  if (m.status !== "sent" || !m.waMessageId) return null;
+  const run = async () => {
+    setStep("busy");
+    setError(null);
+    try {
+      await api.deleteMessage(m.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "Não foi possível apagar.");
+      setStep("idle");
+    }
+  };
+  return (
+    <span className="del-ctl">
+      {step === "idle" && (
+        <button className="link-btn del" onClick={() => setStep("confirm")} title="Apagar para todos">
+          Apagar
+        </button>
+      )}
+      {step === "confirm" && (
+        <>
+          <button className="link-btn del strong" onClick={() => void run()}>
+            Apagar para todos?
+          </button>
+          <button className="link-btn" onClick={() => setStep("idle")}>
+            cancelar
+          </button>
+        </>
+      )}
+      {step === "busy" && <span>apagando…</span>}
+      {error && <span className="del-err">{error}</span>}
+    </span>
+  );
+}
+
 function statusLabel(m: ChatMessage): string {
   if (m.status === "pending") return " · enviando…";
   return " · " + hhmm(m.createdAt) + (m.status === "sent" ? " ✓✓" : "");
@@ -192,6 +250,16 @@ export function MessageBubble({
 }) {
   if (m.origin === "sistema") {
     return <div className={`sys ${m.eventType ?? ""}`}>{m.text} · {hhmm(m.createdAt)}</div>;
+  }
+  if (m.origin === "consumidor" && m.status === "deleted") {
+    return (
+      <div className="msg in">
+        <div className="bubble cli">
+          <Deleted m={m} />
+          <span className="bubble-time">{hhmm(m.createdAt)}</span>
+        </div>
+      </div>
+    );
   }
   if (m.origin === "consumidor") {
     const bare = m.kind === "sticker";
@@ -211,9 +279,14 @@ export function MessageBubble({
   }
   const isIa = m.origin === "ia";
   const failed = m.status === "failed";
+  const deleted = m.status === "deleted";
   return (
     <div className="msg out">
-      {m.kind === "sticker" ? (
+      {deleted ? (
+        <div className={`bubble ${isIa ? "ia" : "human"}`}>
+          <Deleted m={m} />
+        </div>
+      ) : m.kind === "sticker" ? (
         <Body m={m} />
       ) : (
         <div className={`bubble ${isIa ? "ia" : "human"}`}>
@@ -222,7 +295,9 @@ export function MessageBubble({
       )}
       <div className={`msg-tagline ${failed ? "fail" : isIa ? "ia" : "human"}`}>
         {isIa ? <IaTag /> : <HumanTag phone={m.origin === "humano_celular"} />}
-        {failed ? (
+        {deleted ? (
+          <span>apagada para todos · {hhmm(m.createdAt)}</span>
+        ) : failed ? (
           <span>Falhou ao enviar · {hhmm(m.createdAt)}</span>
         ) : isIa ? (
           <span>resposta automática{statusLabel(m)}</span>
@@ -233,6 +308,7 @@ export function MessageBubble({
             {m.author ? `${m.author} · ` : ""}pelo app{statusLabel(m)}
           </span>
         )}
+        {!deleted && <DeleteControl m={m} />}
       </div>
     </div>
   );

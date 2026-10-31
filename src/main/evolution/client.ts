@@ -22,6 +22,8 @@ export interface WhatsAppGateway {
   sendSticker(jid: string, base64: string): Promise<SendResult>;
   sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void>;
   getMediaBase64(waMessageId: string, remoteJid: string, fromMe: boolean): Promise<{ base64: string; mimetype: string } | null>;
+  /** Apaga para todos uma mensagem enviada por este número. */
+  deleteForEveryone(jid: string, waMessageId: string): Promise<void>;
 }
 
 type Json = Record<string, unknown>;
@@ -133,7 +135,7 @@ export class EvolutionClient implements WhatsAppGateway {
         url,
         byEvents: false,
         base64: true,
-        events: ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
+        events: ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE", "MESSAGES_DELETE"],
       },
     });
   }
@@ -168,6 +170,10 @@ export class EvolutionClient implements WhatsAppGateway {
 
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void> {
     await this.request("POST", `/chat/sendPresence/${this.instance}`, { number: jid, presence, delay: delayMs }).catch(() => undefined);
+  }
+
+  async deleteForEveryone(jid: string, waMessageId: string): Promise<void> {
+    await this.request("DELETE", `/chat/deleteMessageForEveryone/${this.instance}`, { id: waMessageId, remoteJid: jid, fromMe: true });
   }
 
   async getMediaBase64(waMessageId: string, remoteJid: string, fromMe: boolean): Promise<{ base64: string; mimetype: string } | null> {

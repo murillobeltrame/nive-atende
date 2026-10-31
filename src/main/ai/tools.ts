@@ -9,10 +9,12 @@ import { formatBRL } from "../engine/guard";
 export const TOOL_DEFS: Record<string, AiToolDef> = {
   buscar_produto: {
     name: "buscar_produto",
-    description: "Busca produtos ativos da loja pelo nome/descrição. Devolve preço, variações (tamanho/cor) e quantidade disponível.",
+    description:
+      "Busca no catálogo da loja. Devolve os produtos COM estoque (preço, marca, variações e quantidade) e, à parte, quantos estão esgotados. " +
+      "Use termos curtos e amplos (ex.: 'perfume', 'colônia', 'body splash', uma marca) e faça mais de uma busca quando o pedido for amplo, para conhecer as opções antes de recomendar.",
     parameters: {
       type: "object",
-      properties: { termo: { type: "string", description: "O que o cliente procura, ex.: 'tênis runner preto 40'" } },
+      properties: { termo: { type: "string", description: "Palavra-chave do produto, ex.: 'perfume', 'tênis runner', 'bolsa couro'" } },
       required: ["termo"],
       additionalProperties: false,
     },
@@ -137,27 +139,45 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
   switch (name) {
     case "buscar_produto": {
       const termo = str(args.termo).slice(0, 120);
-      const products = await ctx.nive.searchProducts(termo, 5);
-      state.actions.push({ label: `Buscou “${termo}” → ${products.length} resultado(s)`, kind: "info" });
-      if (!products.length) return { resultado: "NENHUM_PRODUTO", instrucao: "Diga que não encontrou esse produto e pergunte se pode ajudar com outro." };
+      const products = await ctx.nive.searchProducts(termo, 20);
+      const view = products.map((p) => {
+        const variacoes = p.variants.map((v) => {
+          const reserved = ctx.store.reservedQuantity(v.id, ctx.now());
+          const disponivel = p.tracksStock ? Math.max(0, Math.floor(v.stockQty - reserved)) : null;
+          return { v, disponivel };
+        });
+        const total = variacoes.some((x) => x.disponivel === null) ? Infinity : variacoes.reduce((n, x) => n + (x.disponivel ?? 0), 0);
+        return { p, variacoes, total };
+      });
+      const inStock = view.filter((x) => x.total > 0);
+      const soldOut = view.filter((x) => x.total <= 0);
+      state.actions.push({ label: `Buscou “${termo}” → ${inStock.length} com estoque${soldOut.length ? `, ${soldOut.length} esgotado(s)` : ""}`, kind: "info" });
+      if (!products.length)
+        return { resultado: "NENHUM_PRODUTO", instrucao: "Tente outro termo mais amplo ou sinônimo antes de dizer que não tem. Se continuar sem nada, diga que não encontrou e ofereça ajudar com outra coisa." };
       return {
-        produtos: products.map((p) => {
+        total_com_estoque: inStock.length,
+        produtos: inStock.slice(0, 15).map(({ p, variacoes }) => {
           state.products.set(p.id, p);
           addMoney(state, p.priceCash, p.priceCredit);
-          const variacoes = p.variants.map((v) => {
-            const reserved = ctx.store.reservedQuantity(v.id, ctx.now());
-            const disponivel = p.tracksStock ? Math.max(0, Math.floor(v.stockQty - reserved)) : null;
-            return { variacao_id: v.id, nome: v.label, disponivel: disponivel === null ? "sob consulta" : disponivel };
-          });
           return {
             produto_id: p.id,
             descricao: p.description,
+            ...(p.brand ? { marca: p.brand } : {}),
+            ...(p.category ? { categoria: p.category } : {}),
             preco: formatBRL(p.priceCash),
             ...(p.priceCredit > 0 && Math.abs(p.priceCredit - p.priceCash) > 0.009 ? { preco_a_prazo: formatBRL(p.priceCredit) } : {}),
             tem_foto: Boolean(p.imageUrl),
-            variacoes,
+            variacoes: variacoes
+              .filter((x) => x.disponivel === null || x.disponivel > 0)
+              .map((x) => ({ variacao_id: x.v.id, nome: x.v.label, disponivel: x.disponivel === null ? "sob consulta" : x.disponivel })),
           };
         }),
+        ...(soldOut.length
+          ? {
+              esgotados: soldOut.slice(0, 5).map(({ p }) => p.description),
+              obs_esgotados: "Esgotados: não ofereça. Só mencione se o cliente perguntar exatamente por um deles, e já sugira uma alternativa com estoque.",
+            }
+          : {}),
       };
     }
 

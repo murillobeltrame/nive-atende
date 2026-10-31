@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.2.4 — 2026-10-31
+
+- IA vendedora: entende com naturalidade o que o cliente procura (para quem é, estilo, marca, quanto quer gastar), compara o catálogo antes de oferecer e recomenda as 2–3 melhores opções com estoque. Itens esgotados não são oferecidos.
+- Novo campo "Contexto e personalidade da IA" em Configurações → Personalidade, para o lojista descrever a loja e o jeito de atender.
+- A IA lê a conversa inteira até um limite configurável (padrão: 40 mensagens), lembrando o que o cliente já disse.
+- A foto de produto enviada pela IA agora aparece na conversa do app.
+- "Apagar para todos" nas mensagens enviadas pela loja; mensagens apagadas pelo cliente aparecem como apagadas (com opção de ver o original).
+
 ## v0.2.3 — 31/10/2026
 
 - Corrige o pareamento do WhatsApp: mesma configuração da Evolution API (cliente "Chrome", sincronização inicial ligada, que o WhatsApp exige para o novo formato de contatos)

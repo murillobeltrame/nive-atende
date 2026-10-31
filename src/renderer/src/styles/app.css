@@ -1725,3 +1725,50 @@ td .sub {
   flex-direction: column;
   gap: 8px;
 }
+
+/* apagar para todos */
+.del-ctl {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.msg.out:hover .del-ctl,
+.del-ctl:focus-within {
+  opacity: 1;
+}
+.del-ctl .link-btn {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.del-ctl .link-btn.del.strong {
+  color: var(--red-text);
+  font-weight: 700;
+}
+.del-ctl .del-err {
+  color: var(--red-text);
+}
+.msg.out:has(.del-ctl .strong) .del-ctl,
+.msg.out:has(.del-err) .del-ctl {
+  opacity: 1;
+}
+.deleted {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.deleted .link-btn {
+  font-size: 11px;
+  color: var(--muted);
+}
+.deleted-original {
+  flex-basis: 100%;
+  font-size: 12px;
+  text-decoration: line-through;
+  opacity: 0.8;
+}

@@ -31,6 +31,26 @@ export interface EngineDeps {
   echoGraceMs?: number;
   /** Teto da espera para juntar mensagens seguidas do cliente. */
   maxBatchWaitMs?: number;
+  /** Baixa a foto do produto para enviar e mostrar na conversa do app. */
+  fetchImage?: (url: string) => Promise<{ data: Buffer; mime: string } | null>;
+}
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** Download padrão de imagem (com tempo e tamanho máximos). */
+export async function defaultFetchImage(url: string): Promise<{ data: Buffer; mime: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const mime = (res.headers.get("content-type") ?? "").split(";")[0]!.trim();
+    if (!mime.startsWith("image/")) return null;
+    const len = Number(res.headers.get("content-length") ?? 0);
+    if (len > MAX_IMAGE_BYTES) return null;
+    const data = Buffer.from(await res.arrayBuffer());
+    return data.length && data.length <= MAX_IMAGE_BYTES ? { data, mime } : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface NotifyEvent {
@@ -49,8 +69,9 @@ export interface EngineEvents {
   usage: [];
 }
 
-const MAX_TOOL_ROUNDS = 5;
-const HISTORY_SIZE = 14;
+const MAX_TOOL_ROUNDS = 7;
+/** Limite de texto do histórico enviado à IA (mantém o custo previsível). */
+const HISTORY_CHAR_BUDGET = 16000;
 const OUT_OF_HOURS_NOTICE_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 function preview(m: { kind: string; text: string | null; transcript?: string | null }): string {
@@ -445,11 +466,13 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   // ======================================================================== IA
   private buildHistory(conversationId: string): AiMessage[] {
+    const size = Math.max(6, Math.min(100, Math.round(this.s.ai.historyMessages || 40)));
     const msgs = this.deps.store
-      .listMessages(conversationId, 60)
-      .filter((m) => m.origin !== "sistema")
-      .slice(-HISTORY_SIZE);
+      .listMessages(conversationId, size * 2 + 20)
+      .filter((m) => m.origin !== "sistema" && m.status !== "deleted")
+      .slice(-size);
     const out: AiMessage[] = [];
+    let prevAt: number | null = null;
     for (const m of msgs) {
       let content: string;
       const raw = m.transcript ?? m.text ?? "";
@@ -464,9 +487,19 @@ export class Engine extends EventEmitter<EngineEvents> {
       // CPF e datas nunca vão para a IA
       content = guardText(content).safeText;
       if (!content.trim()) continue;
+      // marca intervalos longos para a IA saber que a conversa foi retomada outro dia
+      if (prevAt !== null && m.createdAt - prevAt > 6 * 60 * 60 * 1000) {
+        const d = new Date(m.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        content = `(conversa retomada em ${d}) ${content}`;
+      }
+      prevAt = m.createdAt;
       if (m.origin === "consumidor") out.push({ role: "user", content });
       else out.push({ role: "assistant", content: m.origin === "ia" ? content : `(resposta da equipe da loja) ${content}` });
     }
+    // corta as mais antigas se o texto passar do limite (sempre mantém as mais recentes)
+    let total = out.reduce((n, m) => n + String(m.content ?? "").length, 0);
+    while (out.length > 4 && total > HISTORY_CHAR_BUDGET) total -= String(out.shift()!.content ?? "").length;
+    while (out.length && out[0]!.role === "assistant") out.shift();
     return out;
   }
 
@@ -585,14 +618,42 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private async sendAiMedia(conversationId: string, url: string, caption: string): Promise<void> {
     const store = this.deps.store;
-    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "image", text: caption, mediaMime: "image/jpeg", hasMedia: false, status: "pending" });
+    // baixa a foto uma vez: o mesmo arquivo vai para o cliente e fica visível na conversa do app
+    const img = await (this.deps.fetchImage ?? defaultFetchImage)(url).catch(() => null);
+    const mime = img?.mime ?? "image/jpeg";
+    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "image", text: caption, mediaMime: mime, hasMedia: Boolean(img), status: "pending" });
+    if (img) store.saveMedia(msg.id, mime, img.data);
     this.emit("message", msg);
     try {
-      const r = await this.withInFlight(() => this.deps.wa.sendMedia(conversationId, { mediatype: "image", mimetype: "image/jpeg", media: url, caption: "" }));
+      const media = img ? img.data.toString("base64") : url;
+      const r = await this.withInFlight(() => this.deps.wa.sendMedia(conversationId, { mediatype: "image", mimetype: mime, media, caption: "" }));
       this.emit("message", store.updateMessage(msg.id, { waMessageId: r.waMessageId, status: "sent" }));
     } catch {
       this.emit("message", store.updateMessage(msg.id, { status: "failed" }));
     }
+  }
+
+  /** "Apagar para todos" uma mensagem que a loja enviou (pela IA, pelo app ou pelo celular). */
+  async deleteMessage(messageId: string): Promise<ChatMessage> {
+    const store = this.deps.store;
+    const m = store.getMessage(messageId);
+    if (!m) throw new Error("Mensagem não encontrada");
+    if (m.origin === "consumidor" || m.origin === "sistema") throw new Error("Só dá para apagar mensagens enviadas pela loja.");
+    if (m.status === "deleted") return m;
+    if (!m.waMessageId || m.status !== "sent") throw new Error("Essa mensagem não chegou a ser enviada.");
+    await this.deps.wa.deleteForEveryone(m.conversationId, m.waMessageId);
+    const updated = store.updateMessage(m.id, { status: "deleted" });
+    this.emit("message", updated);
+    return updated;
+  }
+
+  /** O cliente (ou o celular da loja) apagou uma mensagem para todos. */
+  handleRevoke(remoteJid: string, waMessageId: string): void {
+    const store = this.deps.store;
+    const m = store.getMessageByWaId(waMessageId);
+    // só aceita apagar mensagem da mesma conversa
+    if (!m || m.conversationId !== remoteJid || m.status === "deleted") return;
+    this.emit("message", store.updateMessage(m.id, { status: "deleted" }));
   }
 
   /** Mensagem digitada pelo lojista no app. */

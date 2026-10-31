@@ -95,6 +95,7 @@ const gateway: WhatsAppGateway = {
   sendSticker: (...a) => wa().sendSticker(...a),
   sendPresence: (...a) => wa().sendPresence(...a),
   getMediaBase64: (...a) => wa().getMediaBase64(...a),
+  deleteForEveryone: (...a) => wa().deleteForEveryone(...a),
 };
 
 const monitor = new StatusMonitor({
@@ -122,6 +123,7 @@ function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void
   if (source !== wa()) return; // eventos do modo inativo são ignorados
   for (const ev of events) {
     if (ev.type === "message") void engine.handleInbound(ev).catch((e) => console.error("[whatsapp]", e));
+    else if (ev.type === "revoke") engine.handleRevoke(ev.remoteJid, ev.waMessageId);
     else if (ev.type === "connection") {
       monitor.setWhatsappState(ev.state);
       if (ev.state === "open") emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
@@ -505,6 +507,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   sendMedia: (id, media) => engine.sendHumanMedia(id, media, settings.get().app.operatorName),
   sendAudio: (id, base64, mime) => engine.sendHumanAudio(id, base64, mime, settings.get().app.operatorName),
   resendSticker: (id, messageId) => engine.resendSticker(id, messageId, settings.get().app.operatorName),
+  deleteMessage: (messageId) => engine.deleteMessage(messageId),
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),
