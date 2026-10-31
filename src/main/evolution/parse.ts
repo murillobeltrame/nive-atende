@@ -67,7 +67,8 @@ function unwrap(message: Json): Json {
   return m;
 }
 
-function parseMessage(data: Json): InboundMessage | null {
+/** Lê uma mensagem no formato do WhatsApp (o mesmo do Baileys e dos webhooks da Evolution). */
+export function parseMessage(data: Json): InboundMessage | null {
   const key = asObj(data.key);
   const remoteJid = String(key.remoteJid ?? "");
   const waMessageId = String(key.id ?? "");
@@ -139,7 +140,12 @@ function parseMessage(data: Json): InboundMessage | null {
   }
 
   const base64 = typeof message.base64 === "string" ? message.base64 : typeof data.base64 === "string" ? data.base64 : null;
-  const rawTs = Number(data.messageTimestamp ?? 0);
+  const tsRaw = data.messageTimestamp as unknown;
+  // o Baileys pode mandar o horário como "Long" (protobuf)
+  const rawTs =
+    tsRaw && typeof tsRaw === "object"
+      ? Number((tsRaw as { toNumber?: () => number; low?: number }).toNumber?.() ?? (tsRaw as { low?: number }).low ?? 0)
+      : Number(tsRaw ?? 0);
   const timestamp = rawTs > 1e12 ? rawTs : rawTs > 0 ? rawTs * 1000 : Date.now();
 
   return {

@@ -2,7 +2,8 @@
 import { lookup } from "node:dns/promises";
 import { EventEmitter } from "node:events";
 import type { AppSettings, CheckResult, StatusSnapshot } from "../../shared/types";
-import type { EvolutionClient, ConnectionState } from "../evolution/client";
+import type { ConnectionState } from "../evolution/client";
+import type { WhatsAppService } from "../whatsapp/service";
 import type { NiveApi } from "../nive/client";
 import type { AiError } from "../ai/openai";
 import type { Store } from "../store/db";
@@ -11,7 +12,7 @@ import { localDay } from "../store/db";
 export interface MonitorDeps {
   store: Store;
   settings: () => AppSettings;
-  evolution: EvolutionClient;
+  whatsapp: () => WhatsAppService;
   nive: NiveApi;
   /** deep = faz uma chamada mínima de chat (detecta falta de crédito, que a listagem de modelos não detecta). */
   testOpenAi: (deep: boolean) => Promise<void>;
@@ -68,27 +69,17 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
   }
 
   private async checkEvolution(): Promise<void> {
-    const s = this.deps.settings();
-    if (!s.evolution.hasApiKey) {
-      this.set("evolution", "error", "Chave da Evolution não configurada");
-      this.set("whatsapp", "error", "WhatsApp não configurado");
-      return;
-    }
-    try {
-      await this.deps.evolution.ping();
-      this.evolutionFailures = 0;
-      this.set("evolution", "ok", "Serviço do WhatsApp no ar");
-    } catch {
+    const wa = this.deps.whatsapp();
+    const h = await wa.health();
+    if (!h.ok) {
       this.evolutionFailures++;
-      this.set("evolution", "error", "O serviço do WhatsApp (Evolution) não responde");
-      this.set("whatsapp", "error", "Sem conexão com o serviço do WhatsApp");
+      this.set("evolution", "error", h.message);
+      this.set("whatsapp", "error", wa.mode === "embedded" ? "WhatsApp indisponível" : "Sem conexão com o servidor do WhatsApp");
       return;
     }
-    try {
-      this.whatsappState = await this.deps.evolution.connectionState();
-    } catch {
-      this.whatsappState = "close";
-    }
+    this.evolutionFailures = 0;
+    this.set("evolution", "ok", h.message);
+    this.whatsappState = await wa.connectionState();
     this.applyWhatsappState();
   }
 
@@ -214,7 +205,7 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
         err === "whatsapp"
           ? { label: "Reconectar (mostrar QR Code)", kind: "reconnect" }
           : err === "evolution"
-            ? s.evolution.hasApiKey
+            ? s.evolution.mode === "embedded" || s.evolution.hasApiKey
               ? { label: "Reiniciar serviço", kind: "restart_evolution" }
               : { label: "Configurar WhatsApp", kind: "open_settings_evolution" }
             : err === "openai"

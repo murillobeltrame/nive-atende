@@ -15,14 +15,24 @@ function resolveFfmpeg(): string | null {
   }
 }
 
+/** Áudio recebido -> MP3 (para a transcrição da OpenAI). */
 export function createFfmpegTranscoder(ffmpegPath: string | null = resolveFfmpeg()): Transcoder {
+  return createFfmpegConverter(["-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", "-f", "mp3"], ffmpegPath);
+}
+
+/** Áudio gravado no app (webm) -> OGG/Opus, o formato de mensagem de voz do WhatsApp. */
+export function createOggOpusTranscoder(ffmpegPath: string | null = resolveFfmpeg()): Transcoder {
+  return createFfmpegConverter(["-vn", "-ac", "1", "-ar", "48000", "-c:a", "libopus", "-b:a", "32k", "-f", "ogg"], ffmpegPath);
+}
+
+function createFfmpegConverter(outputArgs: string[], ffmpegPath: string | null): Transcoder {
   return (input) =>
     new Promise((resolve, reject) => {
       if (!ffmpegPath) {
         reject(new Error("ffmpeg não encontrado"));
         return;
       }
-      const proc = spawn(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", "-f", "mp3", "pipe:1"]);
+      const proc = spawn(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", ...outputArgs, "pipe:1"]);
       const out: Buffer[] = [];
       const err: Buffer[] = [];
       const timer = setTimeout(() => {

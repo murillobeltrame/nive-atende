@@ -128,7 +128,8 @@ export type NotifyMode = "humano" | "todas" | "nenhuma";
 export interface AppSettings {
   nive: { baseUrl: string; storeSlug: string; hasApiKey: boolean };
   openai: { model: string; transcribeModel: string; hasApiKey: boolean };
-  evolution: { baseUrl: string; instanceName: string; webhookPort: number; hasApiKey: boolean };
+  /** mode "embedded" = WhatsApp dentro do app (padrão); "evolution" = servidor Evolution externo. */
+  evolution: { mode: "embedded" | "evolution"; baseUrl: string; instanceName: string; webhookPort: number; hasApiKey: boolean };
   attendance: {
     autoEnabled: boolean;
     businessHours: { enabled: boolean; days: number[]; start: string; end: string };

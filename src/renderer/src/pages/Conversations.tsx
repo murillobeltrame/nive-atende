@@ -65,9 +65,9 @@ function SetupChecklist({
       label: "Ver passo a passo",
     },
     {
-      done: settings.evolution.hasApiKey,
-      title: "Configurar o serviço do WhatsApp",
-      desc: "Informe o endereço e a chave do serviço do WhatsApp (Evolution) instalado neste computador.",
+      done: settings.evolution.mode !== "evolution" || settings.evolution.hasApiKey,
+      title: "Configurar o servidor Evolution",
+      desc: "Você escolheu usar um servidor Evolution externo: informe o endereço e a chave dele. (Com o WhatsApp dentro do programa este passo não é necessário.)",
       action: () => onOpenSettings("conexoes"),
       label: "Configurar",
     },
@@ -345,7 +345,7 @@ export function ConversationsPage({
 
   const needsSetup =
     settings &&
-    (!settings.nive.hasApiKey || !settings.openai.hasApiKey || !settings.evolution.hasApiKey || !whatsappOk);
+    (!settings.nive.hasApiKey || !settings.openai.hasApiKey || (settings.evolution.mode === "evolution" && !settings.evolution.hasApiKey) || !whatsappOk);
 
   const chips: Array<{ f: ConversationFilter; label: string; cls?: string }> = [
     { f: "todas", label: "Todas" },

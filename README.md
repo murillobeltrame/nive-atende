@@ -31,7 +31,8 @@ com IA paga pela chave OpenAI do próprio lojista. Nada roda no servidor de prod
 ## Requisitos
 
 - Node.js 22.13 ou mais novo (para desenvolver)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para rodar a Evolution API)
+- Nada mais para o WhatsApp: ele roda **dentro do app** (motor Baileys, o mesmo da Evolution).
+  O Docker só é necessário se você escolher usar um servidor Evolution externo.
 - Uma chave da API Nive (plano com acesso à API, escopo `integration`) e o slug da loja
 - Uma chave da OpenAI com créditos (o app mostra o passo a passo em Ajustes > Inteligência artificial)
 
@@ -39,8 +40,6 @@ com IA paga pela chave OpenAI do próprio lojista. Nada roda no servidor de prod
 
 ```bash
 npm install
-cp docker/.env.example docker/.env   # troque AUTHENTICATION_API_KEY por uma chave longa
-npm run evolution:up                 # sobe Evolution + Postgres + Redis no Docker
 npm run dev                          # abre o app (Vite + Electron)
 ```
 
@@ -57,7 +56,7 @@ Parâmetros úteis: `?status=error`, `?terms=0`, `?setup=1`, `?page=ajustes&sect
 1. Aceite o termo de uso.
 2. Em **Ajustes > Conexões**:
    - **API Nive:** informe o slug da loja e cole a chave (criada no ERP em Integração via API), depois clique em **Testar**.
-   - **WhatsApp:** use a URL `http://localhost:8080`, a instância `nive-atende` e a mesma chave do `docker/.env`, depois clique em **Testar** e em **Conectar WhatsApp**. Leia o QR Code com o celular da loja (Aparelhos conectados).
+   - **WhatsApp:** deixe marcado **Dentro do programa**, clique em **Conectar WhatsApp** e leia o QR Code com o celular da loja (WhatsApp > Aparelhos conectados > Conectar aparelho). Depois disso o app reconecta sozinho sempre que abrir.
 3. Em **Ajustes > Inteligência artificial**, cole a chave da OpenAI e clique em **Testar**.
 4. Ligue o **Atendimento automático** na barra do topo.
 
@@ -71,7 +70,7 @@ Parâmetros úteis: `?status=error`, `?terms=0`, `?setup=1`, `?page=ajustes&sect
 | `npm run build` | Gera `dist/` |
 | `npm run dist:win` | Instalador do Windows (`release/`) |
 | `npm run dist:mac` | Instalador do Mac (`release/`) |
-| `npm run evolution:up` / `evolution:down` | Liga/desliga a Evolution no Docker |
+| `npm run evolution:up` / `evolution:down` | Liga/desliga uma Evolution no Docker (só no modo externo) |
 
 ## Versões e instaladores
 
@@ -102,6 +101,15 @@ e cada versão incharia o repositório.
 Para tirar esses avisos, é preciso assinar com um Apple Developer ID (US$ 99/ano) e um certificado
 de assinatura de código para Windows.
 
+## WhatsApp: dentro do app ou Evolution externa
+
+- **Dentro do programa (padrão):** usa o Baileys, a mesma biblioteca que a Evolution usa por baixo para
+  falar com o WhatsApp. A sessão fica na pasta de dados do app e reconecta sozinha. Texto, áudio (gravação
+  convertida para mensagem de voz com ffmpeg), foto, documento, figurinha, QR Code e status funcionam igual.
+- **Servidor Evolution externo (avançado):** para quem já tem uma Evolution API. Em Ajustes > Conexões,
+  marque essa opção e informe o endereço, a instância e a chave. O `docker/docker-compose.yml` sobe uma
+  Evolution local, se precisar.
+
 ## Estrutura
 
 ```
@@ -113,13 +121,14 @@ src/
     settings.ts  configurações + chaves criptografadas (safeStorage)
     store/       SQLite local (node:sqlite, sem dependência nativa)
     nive/        cliente da API Nive
-    evolution/   cliente REST, servidor de webhook local e leitura dos eventos
+    whatsapp/    WhatsApp embutido (Baileys) e modo servidor Evolution externo
+    evolution/   cliente REST da Evolution, webhook local e leitura das mensagens do WhatsApp
     ai/          OpenAI (chat com ferramentas + transcrição), instruções e ferramentas
     engine/      motor de atendimento, identificação, proteção de CPF, telefones
     audio/       conversão OGG -> MP3 com ffmpeg
     status/      monitor de status (verde/amarelo/vermelho)
   renderer/      interface React (com modo de demonstração quando aberta fora do Electron)
-docker/          docker-compose da Evolution API
+docker/          docker-compose da Evolution API (opcional, modo externo)
 tests/           testes (vitest)
 docs/            plano técnico e esboços
 ```
@@ -169,7 +178,6 @@ docs/            plano técnico e esboços
 1. O rascunho criado pelo WhatsApp deveria **baixar ou reservar estoque** no ERP? Hoje o app desconta
    as reservas dele mesmo ao informar a disponibilidade.
 2. A **data de nascimento** é obrigatória no cadastro de cliente da Nive? Sem ela, o app usa o modo restrito.
-3. Vale empacotar a Evolution dentro do instalador, em vez de depender do Docker Desktop.
-4. Vale criar um escopo de chave "Atendimento" no ERP, só leitura + rascunho de venda.
+3. Vale criar um escopo de chave "Atendimento" no ERP, só leitura + rascunho de venda.
 
 Detalhes completos em [`docs/plano-tecnico.pdf`](docs/plano-tecnico.pdf).

@@ -265,6 +265,15 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
   const [evoTest, setEvoTest] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
 
+  const embedded = settings.evolution.mode !== "evolution";
+  // o modo vale na hora (o botão Conectar usa o modo escolhido)
+  const setMode = async (mode: "embedded" | "evolution") => {
+    setEvoTest(null);
+    const s = await api.saveSettings({ evolution: { mode } });
+    onSettings(s);
+    setD({ ...d, evolution: { ...d.evolution, mode } });
+  };
+
   const test = async (which: "nive" | "evo") => {
     setTesting(which);
     try {
@@ -319,40 +328,60 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
         </div>
       </div>
       <div className="card">
-        <h2 className="card-title">WhatsApp (serviço Evolution)</h2>
-        <p className="card-sub">
-          O serviço do WhatsApp roda neste computador. Depois de configurar, conecte o número da loja lendo o QR Code.
-        </p>
+        <h2 className="card-title">WhatsApp</h2>
+        <p className="card-sub">Escolha como o Nive Atende se conecta ao WhatsApp da loja e depois leia o QR Code com o celular.</p>
         <div className="stack">
-          <div className="grid-3">
-            <Text
-              label="Endereço do serviço"
-              value={d.evolution.baseUrl}
-              onChange={(v) => setD({ ...d, evolution: { ...d.evolution, baseUrl: v } })}
-            />
-            <Text
-              label="Nome da instância"
-              value={d.evolution.instanceName}
-              onChange={(v) => setD({ ...d, evolution: { ...d.evolution, instanceName: v } })}
-            />
-            <Num
-              label="Porta para receber mensagens"
-              value={d.evolution.webhookPort}
-              min={1024}
-              max={65535}
-              onChange={(v) => setD({ ...d, evolution: { ...d.evolution, webhookPort: v } })}
-            />
+          <div className="radio-group" role="radiogroup" aria-label="Como conectar o WhatsApp">
+            <label>
+              <input type="radio" name="waMode" checked={embedded} onChange={() => void setMode("embedded")} />
+              <span>
+                <b>Dentro do programa</b> (recomendado)
+                <br />
+                <small style={{ color: "var(--muted)" }}>Não precisa instalar mais nada. É só conectar e ler o QR Code.</small>
+              </span>
+            </label>
+            <label>
+              <input type="radio" name="waMode" checked={!embedded} onChange={() => void setMode("evolution")} />
+              <span>
+                <b>Servidor Evolution externo</b> (avançado)
+                <br />
+                <small style={{ color: "var(--muted)" }}>Para quem já tem uma Evolution API rodando (por exemplo no Docker).</small>
+              </span>
+            </label>
           </div>
-          <SecretField
-            label="Chave do serviço (apikey)"
-            secretKey="evolutionApiKey"
-            configured={settings.evolution.hasApiKey}
-            placeholder="a mesma AUTHENTICATION_API_KEY da Evolution"
-            onSettings={onSettings}
-          />
+          {!embedded && (
+            <>
+              <div className="grid-3">
+                <Text
+                  label="Endereço do servidor"
+                  value={d.evolution.baseUrl}
+                  onChange={(v) => setD({ ...d, evolution: { ...d.evolution, baseUrl: v } })}
+                />
+                <Text
+                  label="Nome da instância"
+                  value={d.evolution.instanceName}
+                  onChange={(v) => setD({ ...d, evolution: { ...d.evolution, instanceName: v } })}
+                />
+                <Num
+                  label="Porta para receber mensagens"
+                  value={d.evolution.webhookPort}
+                  min={1024}
+                  max={65535}
+                  onChange={(v) => setD({ ...d, evolution: { ...d.evolution, webhookPort: v } })}
+                />
+              </div>
+              <SecretField
+                label="Chave do servidor (apikey)"
+                secretKey="evolutionApiKey"
+                configured={settings.evolution.hasApiKey}
+                placeholder="a mesma AUTHENTICATION_API_KEY da Evolution"
+                onSettings={onSettings}
+              />
+            </>
+          )}
           <div className="btn-row">
             <button className="btn" onClick={() => test("evo")} disabled={testing === "evo"}>
-              {testing === "evo" ? "Testando…" : "Testar serviço"}
+              {testing === "evo" ? "Testando…" : "Testar"}
             </button>
             <button className="btn primary" onClick={onConnectWhatsapp}>
               Conectar WhatsApp

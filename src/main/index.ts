@@ -8,10 +8,13 @@ import type { NavigateTarget, QrState, StatusSnapshot, UsageSummary } from "../s
 import { Store, localDay } from "./store/db";
 import { SettingsService } from "./settings";
 import { NiveClient } from "./nive/client";
-import { EvolutionClient } from "./evolution/client";
-import { WebhookServer } from "./evolution/webhook-server";
+import { EvolutionClient, type WhatsAppGateway } from "./evolution/client";
+import type { EvolutionEvent } from "./evolution/parse";
 import { OpenAiProvider, AiError } from "./ai/openai";
-import { createFfmpegTranscoder } from "./audio/transcode";
+import { createFfmpegTranscoder, createOggOpusTranscoder } from "./audio/transcode";
+import { BaileysService } from "./whatsapp/baileys";
+import { EvolutionService } from "./whatsapp/evolution-service";
+import type { WhatsAppService } from "./whatsapp/service";
 import { Engine } from "./engine/engine";
 import { StatusMonitor } from "./status/monitor";
 import { registeredToJid, digitsOnly } from "./engine/phone";
@@ -57,10 +60,44 @@ const evolution = new EvolutionClient(() => {
 });
 const ai = new OpenAiProvider(() => settings.getSecret("openaiApiKey"));
 
+/** URL que a Evolution (em Docker) usa para chegar ao app. */
+function webhookUrl(): string {
+  const s = settings.get();
+  const host = process.env.NIVE_ATENDE_WEBHOOK_HOST ?? (/localhost|127\.0\.0\.1/.test(s.evolution.baseUrl) ? "host.docker.internal" : "127.0.0.1");
+  return `http://${host}:${s.evolution.webhookPort}/webhook/${webhookToken}`;
+}
+
+// WhatsApp: embutido (Baileys, padrão) ou servidor Evolution externo
+const embeddedWa = new BaileysService({
+  authDir: join(app.getPath("userData"), "whatsapp"),
+  toOggOpus: createOggOpusTranscoder(),
+  appVersion: app.getVersion(),
+});
+const evolutionWa = new EvolutionService({
+  client: evolution,
+  token: webhookToken,
+  port: () => settings.get().evolution.webhookPort,
+  webhookUrl,
+  hasApiKey: () => settings.get().evolution.hasApiKey,
+});
+let activeMode = settings.get().evolution.mode;
+function wa(): WhatsAppService {
+  return activeMode === "evolution" ? evolutionWa : embeddedWa;
+}
+/** O motor envia sempre pelo serviço ativo. */
+const gateway: WhatsAppGateway = {
+  sendText: (...a) => wa().sendText(...a),
+  sendMedia: (...a) => wa().sendMedia(...a),
+  sendAudio: (...a) => wa().sendAudio(...a),
+  sendSticker: (...a) => wa().sendSticker(...a),
+  sendPresence: (...a) => wa().sendPresence(...a),
+  getMediaBase64: (...a) => wa().getMediaBase64(...a),
+};
+
 const monitor = new StatusMonitor({
   store,
   settings: () => settings.get(),
-  evolution,
+  whatsapp: () => wa(),
   nive,
   testOpenAi: async (deep) => {
     if (deep) await ai.chat(settings.get().openai.model, [{ role: "user", content: "Responda apenas: ok" }], []);
@@ -73,45 +110,33 @@ const engine = new Engine({
   settings: () => settings.get(),
   nive,
   ai,
-  wa: evolution,
+  wa: gateway,
   transcode: createFfmpegTranscoder(),
   blockedReason: () => monitor.blockedReason(),
 });
 
-const webhook = new WebhookServer(webhookToken, (events) => {
+function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void {
+  if (source !== wa()) return; // eventos do modo inativo são ignorados
   for (const ev of events) {
-    if (ev.type === "message") void engine.handleInbound(ev).catch((e) => console.error("[webhook]", e));
+    if (ev.type === "message") void engine.handleInbound(ev).catch((e) => console.error("[whatsapp]", e));
     else if (ev.type === "connection") {
       monitor.setWhatsappState(ev.state);
       if (ev.state === "open") emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
     } else if (ev.type === "qr") emitQr({ state: "connecting", qrBase64: ev.qrBase64, pairingCode: ev.pairingCode, message: null });
     else if (ev.type === "ack") engine.handleAck(ev.waMessageId, ev.status);
   }
-});
-
-/** URL que a Evolution (em Docker) usa para chegar ao app. */
-function webhookUrl(): string {
-  const s = settings.get();
-  const host = process.env.NIVE_ATENDE_WEBHOOK_HOST ?? (/localhost|127\.0\.0\.1/.test(s.evolution.baseUrl) ? "host.docker.internal" : "127.0.0.1");
-  return `http://${host}:${s.evolution.webhookPort}/webhook/${webhookToken}`;
 }
+embeddedWa.onEvents((e) => handleWaEvents(embeddedWa, e));
+evolutionWa.onEvents((e) => handleWaEvents(evolutionWa, e));
 
-async function startWebhook(): Promise<void> {
-  const port = settings.get().evolution.webhookPort;
-  try {
-    await webhook.start(port);
-  } catch (e) {
-    console.error("[webhook] não foi possível abrir a porta", port, e);
-  }
-}
-
-async function registerWebhook(): Promise<void> {
-  if (!settings.get().evolution.hasApiKey) return;
-  try {
-    if (await evolution.instanceExists()) await evolution.setWebhook(webhookUrl());
-  } catch (e) {
-    console.error("[evolution] falha ao registrar webhook", e);
-  }
+/** Troca entre WhatsApp embutido e Evolution quando o lojista muda nos Ajustes. */
+async function applyWhatsappMode(): Promise<void> {
+  const mode = settings.get().evolution.mode;
+  if (mode === activeMode) return;
+  await wa().stop();
+  activeMode = mode;
+  await wa().start();
+  void monitor.runAll(true);
 }
 
 // ------------------------------------------------------------------ envio para a interface
@@ -166,7 +191,7 @@ monitor.on("down", (snap) => {
   if (ownerJid && whatsappOk && ownerAlertSentFor !== snap.downSince) {
     ownerAlertSentFor = snap.downSince;
     const jid = ownerJid;
-    void evolution.sendText(jid, `Nive Atende: ${snap.headline}. Abra o programa no computador da loja para resolver.`).catch(() => undefined);
+    void wa().sendText(jid, `Nive Atende: ${snap.headline}. Abra o programa no computador da loja para resolver.`).catch(() => undefined);
   }
 });
 monitor.on("recovered", () => {
@@ -299,37 +324,53 @@ function usageSummary(): UsageSummary {
 
 // ------------------------------------------------------------------ IPC
 async function connectWhatsapp(): Promise<QrState> {
+  const service = wa();
   try {
-    if (!(await evolution.instanceExists())) await evolution.createInstance();
-    await evolution.setWebhook(webhookUrl());
-    const state = await evolution.connectionState();
-    if (state === "open") {
+    const r = await service.connect();
+    if (r.state === "open") {
       monitor.setWhatsappState("open");
       return { state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp já está conectado" };
     }
-    const qr = await evolution.connect();
-    // acompanha até conectar (os eventos de webhook também atualizam)
-    let tries = 0;
-    const poll = setInterval(async () => {
-      tries++;
-      try {
-        const st = await evolution.connectionState();
-        if (st === "open") {
-          clearInterval(poll);
-          monitor.setWhatsappState("open");
-          emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
-        } else if (tries % 15 === 0) {
-          const again = await evolution.connect();
-          emitQr({ state: "connecting", qrBase64: again.qrBase64, pairingCode: again.pairingCode, message: null });
+    if (service.mode === "evolution") {
+      // a Evolution também avisa pelo webhook; o polling cobre quando o webhook não chega
+      let tries = 0;
+      const poll = setInterval(async () => {
+        tries++;
+        try {
+          const st = await service.connectionState();
+          if (st === "open") {
+            clearInterval(poll);
+            monitor.setWhatsappState("open");
+            emitQr({ state: "open", qrBase64: null, pairingCode: null, message: "WhatsApp conectado" });
+          } else if (tries % 15 === 0) {
+            const again = await service.connect();
+            emitQr({ state: "connecting", qrBase64: again.qrBase64, pairingCode: again.pairingCode, message: null });
+          }
+        } catch {
+          /* tenta de novo */
         }
-      } catch {
-        /* tenta de novo */
-      }
-      if (tries > 150) clearInterval(poll);
-    }, 2000);
-    return { state: "connecting", qrBase64: qr.qrBase64, pairingCode: qr.pairingCode, message: "Abra o WhatsApp no celular da loja > Aparelhos conectados > Conectar aparelho" };
+        if (tries > 150) clearInterval(poll);
+      }, 2000);
+    }
+    return {
+      state: "connecting",
+      qrBase64: r.qrBase64,
+      pairingCode: r.pairingCode,
+      message: r.qrBase64
+        ? "Abra o WhatsApp no celular da loja > Aparelhos conectados > Conectar aparelho e leia o código"
+        : "Gerando o QR Code… se não aparecer em alguns segundos, confira a internet e tente de novo.",
+    };
   } catch (e) {
-    return { state: "close", qrBase64: null, pairingCode: null, message: `Não foi possível falar com o serviço do WhatsApp: ${(e as Error).message}` };
+    const msg = (e as Error).message;
+    return {
+      state: "close",
+      qrBase64: null,
+      pairingCode: null,
+      message:
+        service.mode === "evolution" && /fetch failed|ECONNREFUSED/i.test(msg)
+          ? "Nenhum servidor Evolution respondendo. Ligue o servidor ou volte para o WhatsApp embutido nos Ajustes."
+          : `Não foi possível conectar o WhatsApp: ${msg}`,
+    };
   }
 }
 
@@ -338,14 +379,15 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   saveSettings: (patch) => {
     const prevPort = settings.get().evolution.webhookPort;
     const s = settings.save(patch);
-    if (s.evolution.webhookPort !== prevPort) void startWebhook().then(registerWebhook);
+    if (s.evolution.mode !== activeMode) void applyWhatsappMode();
+    else if (activeMode === "evolution" && s.evolution.webhookPort !== prevPort) void evolutionWa.stop().then(() => evolutionWa.start());
     if (patch.app?.launchAtLogin !== undefined) applyLoginItem();
     monitor.publish();
     return s;
   },
   setSecret: (key, value) => {
     const s = settings.setSecret(key, value);
-    if (key === "evolutionApiKey") void registerWebhook();
+    if (key === "evolutionApiKey") void evolutionWa.registerWebhook();
     void monitor.runAll(true);
     return s;
   },
@@ -381,15 +423,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
       return { ok: false, message: (e as Error).message };
     }
   },
-  testEvolution: async () => {
-    try {
-      const version = await evolution.ping();
-      const exists = await evolution.instanceExists();
-      return { ok: true, message: `Serviço do WhatsApp no ar${version ? ` (versão ${version})` : ""}. ${exists ? "Instância encontrada." : "A instância será criada ao conectar."}` };
-    } catch (e) {
-      return { ok: false, message: `Não foi possível falar com a Evolution: ${(e as Error).message}` };
-    }
-  },
+  testEvolution: () => wa().test(),
   getStatus: () => monitor.snapshot(),
   refreshStatus: () => monitor.runAll(true),
   setAutoEnabled: (enabled) => {
@@ -398,17 +432,17 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   },
   restartEvolution: async () => {
     try {
-      await evolution.restart();
+      await wa().restart();
       void monitor.runAll(true);
       return { ok: true, message: "Serviço reiniciado." };
     } catch (e) {
-      return { ok: false, message: `Não foi possível reiniciar: ${(e as Error).message}. Confira se o Docker está aberto.` };
+      return { ok: false, message: `Não foi possível reiniciar: ${(e as Error).message}.` };
     }
   },
   whatsappConnect: () => connectWhatsapp(),
   whatsappLogout: async () => {
     try {
-      await evolution.logout();
+      await wa().logout();
     } catch {
       /* já desconectado */
     }
@@ -423,7 +457,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     if (!media) {
       const m = store.getMessage(messageId);
       if (!m?.waMessageId || !m.hasMedia) return null;
-      const fetched = await evolution.getMediaBase64(m.waMessageId, m.conversationId, m.origin !== "consumidor").catch(() => null);
+      const fetched = await wa().getMediaBase64(m.waMessageId, m.conversationId, m.origin !== "consumidor").catch(() => null);
       if (!fetched) return null;
       store.saveMedia(m.id, fetched.mimetype, Buffer.from(fetched.base64, "base64"));
       media = store.getMedia(messageId);
@@ -485,8 +519,7 @@ void app.whenReady().then(async () => {
   tray.on("click", () => showWindow());
   refreshTray();
   applyLoginItem();
-  await startWebhook();
-  await registerWebhook();
+  await wa().start().catch((e) => console.error("[whatsapp] falha ao iniciar", e));
   monitor.start();
   // pausas expiradas e retomada periódica
   setInterval(() => engine.sweepExpiredPauses(), 60_000);
@@ -496,6 +529,6 @@ void app.whenReady().then(async () => {
 
 app.on("will-quit", () => {
   monitor.stop();
-  void webhook.stop();
+  void wa().stop();
   store.close();
 });

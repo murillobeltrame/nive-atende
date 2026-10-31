@@ -12,7 +12,7 @@ export interface SecretBox {
 export const DEFAULT_SETTINGS: AppSettings = {
   nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: "", hasApiKey: false },
   openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: false },
-  evolution: { baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: false },
+  evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: false },
   attendance: {
     autoEnabled: false,
     businessHours: { enabled: false, days: [1, 2, 3, 4, 5, 6], start: "08:00", end: "18:00" },
@@ -96,7 +96,12 @@ export class SettingsService {
       ...rest,
       nive: { baseUrl: nive.baseUrl, storeSlug: nive.storeSlug },
       openai: { model: openai.model, transcribeModel: openai.transcribeModel },
-      evolution: { baseUrl: evolution.baseUrl, instanceName: evolution.instanceName, webhookPort: evolution.webhookPort },
+      evolution: {
+        mode: evolution.mode === "evolution" ? "evolution" : "embedded",
+        baseUrl: evolution.baseUrl,
+        instanceName: evolution.instanceName,
+        webhookPort: evolution.webhookPort,
+      },
     };
     this.store.setKv("settings", toSave);
     const result = this.get();

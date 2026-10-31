@@ -107,7 +107,7 @@ export function createMockApi(): NiveAtendeApi {
   let settings: AppSettings = {
     nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: setup ? "" : "loja-exemplo", hasApiKey: !setup },
     openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: !setup },
-    evolution: { baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: !setup },
+    evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: !setup },
     attendance: {
       autoEnabled: true,
       businessHours: { enabled: true, days: [1, 2, 3, 4, 5, 6], start: "08:00", end: "18:00" },
