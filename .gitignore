@@ -1,0 +1,18 @@
+# dependências e builds
+node_modules/
+dist/
+out/
+release/
+*.log
+
+# segredos e dados locais — nunca commitar chaves da Nive ou da OpenAI
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-journal
+*.db
+
+# sistema
+.DS_Store
+Thumbs.db
