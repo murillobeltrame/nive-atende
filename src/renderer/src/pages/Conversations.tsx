@@ -269,10 +269,36 @@ function ChatView({ conversation }: { conversation: Conversation }) {
             </Fragment>
           );
         })}
+        <AiActivity conversationId={conversation.id} />
         <div ref={endRef} />
       </div>
       <Composer conversation={conversation} />
     </section>
+  );
+}
+
+/** "IA buscando produtos no sistema…" logo abaixo da última mensagem. */
+function AiActivity({ conversationId }: { conversationId: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    setLabel(null);
+    return api.onActivity((a) => {
+      if (a.conversationId === conversationId) setLabel(a.label);
+    });
+  }, [conversationId]);
+  useEffect(() => {
+    if (label) document.querySelector(".messages")?.scrollTo({ top: 1e9, behavior: "smooth" });
+  }, [label]);
+  if (!label) return null;
+  return (
+    <div className="ai-activity" role="status">
+      <span className="ai-dots" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      {label}
+    </div>
   );
 }
 

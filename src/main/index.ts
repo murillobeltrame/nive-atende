@@ -174,6 +174,7 @@ function navigate(t: NavigateTarget): void {
 }
 
 engine.on("message", (m) => send(EVENTS.message, m));
+engine.on("activity", (a) => send(EVENTS.activity, a));
 engine.on("conversation", (c) => {
   send(EVENTS.conversation, c);
   refreshTray();

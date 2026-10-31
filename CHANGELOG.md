@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.2.12 — 2026-10-31
+
+- IA vendedora de verdade, para qualquer ramo: em pedido amplo ("tem perfume?", "quero uma roupa", "vende chocolate?") ela primeiro entende a necessidade com uma pergunta de vendedor (ex.: mais fresco, doce ou intenso; ocasião; tamanho; presente ou uso próprio) e só depois oferece 2–3 opções com o motivo de cada uma.
+- A IA não repete produtos que já mostrou na conversa; em "só tem essas?" mostra apenas opções novas ou diz que são as que tem.
+- Na conversa do app aparece o que a IA está fazendo: "Analisando a mensagem…", "IA pensando na resposta…", "Buscando produtos no sistema…", "Reservando o produto no sistema…".
+- Correção: a análise "só assuntos da loja" falhava na OpenAI (chamada sem ferramentas) e acabava respondendo tudo.
+- Dica na configuração do modelo para usar um modelo maior quando quiser respostas mais espertas.
+
 ## v0.2.11 — 2026-10-31
 
 - Nova opção em Configurações → Reserva: "Informar ao cliente até quando fica reservado". Desligada, a confirmação sai sem data/horário limite e a IA também não fala em prazo (a validade continua valendo internamente).

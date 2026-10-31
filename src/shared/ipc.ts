@@ -84,6 +84,8 @@ export interface NiveAtendeApi {
   onQr(cb: (q: QrState) => void): () => void;
   onReservation(cb: (r: Reservation) => void): () => void;
   onNavigate(cb: (t: NavigateTarget) => void): () => void;
+  /** O que a IA está fazendo numa conversa agora (label null = terminou). */
+  onActivity(cb: (a: { conversationId: string; label: string | null }) => void): () => void;
 }
 
 /** Nomes dos canais de eventos (main → renderer). */
@@ -94,6 +96,7 @@ export const EVENTS = {
   qr: "evt:qr",
   reservation: "evt:reservation",
   navigate: "evt:navigate",
+  activity: "evt:activity",
 } as const;
 
 /** Métodos invocáveis (renderer → main). O canal é "rpc:<método>". */

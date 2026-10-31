@@ -76,6 +76,16 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
   },
 };
 
+const ACTIVITY: Record<string, string> = {
+  buscar_produto: "Buscando produtos no sistema…",
+  mostrar_foto_produto: "Separando a foto do produto…",
+  reservar_produto: "Reservando o produto no sistema…",
+  identificar_cliente: "Conferindo o cadastro do cliente…",
+  confirmar_data_nascimento: "Conferindo o cadastro do cliente…",
+  consultar_contas: "Consultando as contas do cliente…",
+  transferir_para_humano: "Chamando alguém da loja…",
+};
+
 export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
   const names = ["buscar_produto"];
   if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto");
@@ -95,6 +105,10 @@ export interface ToolContext {
   nive: NiveApi;
   identity: IdentityService;
   now: () => number;
+  /** Produtos já mostrados ao cliente nesta conversa. */
+  offered?: Set<string>;
+  /** Avisa a interface o que a IA está fazendo agora ("Buscando produtos…"). */
+  activity?: (label: string) => void;
   /** Cria a reserva (rascunho no ERP ou pendente de aprovação). */
   reserve: (input: {
     product: NiveProduct;
@@ -155,6 +169,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
     return { erro: "Argumentos inválidos" };
   }
 
+  ctx.activity?.(ACTIVITY[name] ?? "Consultando o sistema da loja…");
   switch (name) {
     case "buscar_produto": {
       const termo = str(args.termo).slice(0, 120);
@@ -186,6 +201,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
             preco: formatBRL(p.priceCash),
             ...(p.priceCredit > 0 && Math.abs(p.priceCredit - p.priceCash) > 0.009 ? { preco_a_prazo: formatBRL(p.priceCredit) } : {}),
             tem_foto: Boolean(p.imageUrl),
+            ...(ctx.offered?.has(p.id) ? { ja_mostrado: true } : {}),
             variacoes: variacoes
               .filter((x) => x.disponivel === null || x.disponivel > 0)
               .map((x) => ({ variacao_id: x.v.id, nome: x.v.label, disponivel: x.disponivel === null ? "sob consulta" : x.disponivel })),

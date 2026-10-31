@@ -2,6 +2,10 @@
 import { EventEmitter } from "node:events";
 import { prettyName, toWhatsApp } from "../ai/format";
 import { classifyTopic } from "../ai/topic";
+import { normalizeName } from "../nive/client";
+
+/** Palavras comuns em nomes de produto que não identificam um item. */
+const GENERIC_WORDS = new Set(["perfume", "fem", "feminino", "masculino", "masc", "unissex", "com", "para", "edp", "edt", "parfum", "arabe", "kit", "tam", "cor", "unico"]);
 import type { AppSettings, ChatMessage, Conversation, Reservation, ReservationCustomerStatus, SystemEventType } from "../../shared/types";
 import type { Store } from "../store/db";
 import type { NiveApi, NiveProduct } from "../nive/client";
@@ -68,6 +72,7 @@ export interface EngineEvents {
   reservation: [Reservation];
   notify: [NotifyEvent];
   aiError: [AiError];
+  activity: [{ conversationId: string; label: string | null }];
   usage: [];
 }
 
@@ -473,6 +478,32 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
   }
 
+  // ---------------------------------------------------------------- o que a IA está fazendo
+  private setActivity(conversationId: string, label: string | null): void {
+    this.emit("activity", { conversationId, label });
+  }
+
+  // ---------------------------------------------------------------- produtos já mostrados
+  private getOffered(conversationId: string): Set<string> {
+    const v = this.deps.store.getKv<{ at: number; ids: string[] }>(`offered:${conversationId}`);
+    // esquece depois de 3 dias sem conversa
+    if (!v || this.now() - v.at > 3 * 24 * 60 * 60 * 1000) return new Set();
+    return new Set(v.ids);
+  }
+
+  /** Guarda quais produtos da busca apareceram na resposta enviada ao cliente. */
+  private rememberOffered(conversationId: string, reply: string, state: ToolRunState): void {
+    const text = normalizeName(reply);
+    const ids = this.getOffered(conversationId);
+    for (const p of state.products.values()) {
+      const words = normalizeName(prettyName(p.description)).split(" ").filter((w) => w.length > 2 && !GENERIC_WORDS.has(w));
+      const key = words.slice(0, 3).join(" ");
+      if (key && (text.includes(key) || (words.length >= 2 && words.slice(0, 2).every((w) => text.includes(w)) && words.filter((w) => text.includes(w)).length >= Math.min(3, words.length))))
+        ids.add(p.id);
+    }
+    this.deps.store.setKv(`offered:${conversationId}`, { at: this.now(), ids: [...ids].slice(-60) });
+  }
+
   /** A IA está no meio de um atendimento (respondeu há pouco e ninguém da loja entrou depois)? */
   private inActiveAiConversation(conversationId: string): boolean {
     const msgs = this.deps.store.listMessages(conversationId, 30).filter((m) => m.origin !== "consumidor" && m.origin !== "sistema");
@@ -486,6 +517,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   private async checkTopic(conversationId: string): Promise<{ store: boolean; reason: string } | null> {
+    this.setActivity(conversationId, "Analisando a mensagem…");
     try {
       const v = await classifyTopic(this.deps.ai, this.s.openai.model, this.buildHistory(conversationId));
       const cost = estimateChatCost(this.s.openai.model, v.inputTokens, v.outputTokens);
@@ -495,6 +527,8 @@ export class Engine extends EventEmitter<EngineEvents> {
       return v;
     } catch {
       return null; // falhou a análise: segue o atendimento normal
+    } finally {
+      this.setActivity(conversationId, null);
     }
   }
 
@@ -503,6 +537,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private startTyping(jid: string): void {
     if (this.typing.has(jid)) return;
+    this.setActivity(jid, "IA pensando na resposta…");
     const tick = () => {
       void this.deps.wa.sendPresence(jid, "composing", 9000).catch(() => undefined);
       this.typing.set(jid, this.setTimer(tick, 8000));
@@ -515,6 +550,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (t === undefined) return;
     this.clearTimer(t);
     this.typing.delete(jid);
+    this.setActivity(jid, null);
     void this.deps.wa.sendPresence(jid, "paused", 0).catch(() => undefined);
   }
 
@@ -635,6 +671,8 @@ export class Engine extends EventEmitter<EngineEvents> {
             nive: this.deps.nive,
             identity: this.identity,
             now: this.now,
+            offered: this.getOffered(conversationId),
+            activity: (label) => !readOnly && this.setActivity(conversationId, label),
             reserve: (input) => this.createReservation(conversationId, input),
           }, state);
         } catch (e) {
@@ -646,6 +684,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       }
     }
 
+    if (reply && !readOnly) this.rememberOffered(conversationId, reply, state);
     const cost = estimateChatCost(s.openai.model, inTok, outTok);
     store.addUsage(this.now(), { inputTokens: inTok, outputTokens: outTok, costUsd: cost });
     const c = store.getConversation(conversationId)!;

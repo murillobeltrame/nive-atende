@@ -440,6 +440,7 @@ export function createMockApi(): NiveAtendeApi {
     qr: emitter<QrState>(),
     reservation: emitter<Reservation>(),
     navigate: emitter<NavigateTarget>(),
+    activity: emitter<{ conversationId: string; label: string | null }>(),
   };
 
   const touch = (c: Conversation, m: ChatMessage) => {
@@ -694,6 +695,7 @@ export function createMockApi(): NiveAtendeApi {
     onQr: (cb) => ev.qr.on(cb),
     onReservation: (cb) => ev.reservation.on(cb),
     onNavigate: (cb) => ev.navigate.on(cb),
+    onActivity: (cb) => ev.activity.on(cb),
   };
   return api;
 }

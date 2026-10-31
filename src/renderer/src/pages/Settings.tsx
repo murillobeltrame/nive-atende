@@ -573,7 +573,11 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
                   <option key={m} value={m} />
                 ))}
               </datalist>
-              <small>Os modelos “mini” são os mais baratos e respondem bem. Clique em Testar para listar os disponíveis.</small>
+              <small>
+                Os modelos “mini” são os mais baratos. Para um atendimento mais esperto (entende melhor o cliente e
+                escolhe melhor os produtos), use um modelo maior, sem “mini” no nome — custa de 3 a 5 vezes mais por
+                mensagem. Clique em Testar para ver os modelos da sua conta.
+              </small>
             </label>
             <Text
               label="Modelo de transcrição de áudio"

@@ -128,3 +128,40 @@ describe("digitando…", () => {
     expect(t.wa.sent).toHaveLength(1);
   });
 });
+
+describe("não repete produto e mostra o que a IA está fazendo", () => {
+  it("produto já mostrado volta marcado na próxima busca", async () => {
+    const t = setup();
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), reply("Tenho a *Bolsa caramelo* por R$ 159,90!"));
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    let second = "";
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), (msgs) => {
+      second = String(msgs.at(-1)!.content);
+      return reply("Por enquanto é essa que temos.");
+    });
+    await t.engine.handleInbound(inbound(PHONE, "só tem essa?"));
+    await t.clock.advance(2000);
+    expect(second).toContain('"ja_mostrado":true');
+  });
+
+  it("emite o que a IA está fazendo e limpa no fim", async () => {
+    const t = setup();
+    const labels: Array<string | null> = [];
+    t.engine.on("activity", (a) => labels.push(a.label));
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), reply("Tenho sim!"));
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    expect(labels).toContain("IA pensando na resposta…");
+    expect(labels).toContain("Buscando produtos no sistema…");
+    expect(labels.at(-1)).toBeNull();
+  });
+
+  it("prompt pede para entender a necessidade antes de oferecer, em qualquer ramo", () => {
+    const s = structuredClone(DEFAULT_SETTINGS);
+    const p = buildSystemPrompt({ settings: s, now: new Date(), identity: null, awaitingBirthDate: false, blocked: false });
+    expect(p).toContain("ENTENDER ANTES DE OFERECER");
+    expect(p).toContain("chocolate");
+    expect(p).toContain("ja_mostrado");
+  });
+});

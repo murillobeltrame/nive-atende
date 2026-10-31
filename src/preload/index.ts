@@ -20,6 +20,7 @@ const api = {
   onQr: (cb) => subscribe(EVENTS.qr, cb),
   onReservation: (cb) => subscribe(EVENTS.reservation, cb),
   onNavigate: (cb) => subscribe(EVENTS.navigate, cb),
+  onActivity: (cb) => subscribe(EVENTS.activity, cb),
 } as NiveAtendeApi;
 
 contextBridge.exposeInMainWorld("niveAtende", api);

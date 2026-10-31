@@ -93,8 +93,7 @@ export class OpenAiProvider implements AiProvider {
       const res = await this.client().chat.completions.create({
         model,
         messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
-        tools: tools.map((t) => ({ type: "function" as const, function: t })),
-        tool_choice: "auto",
+        ...(tools.length ? { tools: tools.map((t) => ({ type: "function" as const, function: t })), tool_choice: "auto" as const } : {}),
         max_completion_tokens: 2000,
       });
       const choice = res.choices[0];
