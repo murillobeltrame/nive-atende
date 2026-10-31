@@ -462,6 +462,15 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     }
   },
   whatsappConnect: () => connectWhatsapp(),
+  whatsappPairingCode: async (phone) => {
+    try {
+      const code = await wa().pairingCode(phone);
+      return { ok: true, code, message: "Digite este código no celular da loja." };
+    } catch (e) {
+      log("whatsapp", "warn", "falha ao gerar código de pareamento", e);
+      return { ok: false, code: null, message: (e as Error).message };
+    }
+  },
   whatsappLogout: async () => {
     try {
       await wa().logout();

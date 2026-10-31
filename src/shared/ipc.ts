@@ -43,6 +43,8 @@ export interface NiveAtendeApi {
   // WhatsApp
   whatsappConnect(): Promise<QrState>;
   whatsappLogout(): Promise<QrState>;
+  /** "Conectar com número de telefone": devolve o código de 8 caracteres para digitar no celular. */
+  whatsappPairingCode(phone: string): Promise<{ ok: boolean; code: string | null; message: string }>;
 
   // conversas
   listConversations(filter: ConversationFilter, q?: string): Promise<Conversation[]>;
@@ -106,6 +108,7 @@ export const RPC_METHODS = [
   "restartEvolution",
   "whatsappConnect",
   "whatsappLogout",
+  "whatsappPairingCode",
   "listConversations",
   "getConversation",
   "getMessages",

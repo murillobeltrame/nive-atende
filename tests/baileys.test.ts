@@ -21,6 +21,11 @@ class FakeSock {
     this.ended = true;
   }
   updateMediaMessage = async () => ({});
+  pairedWith: string | null = null;
+  async requestPairingCode(phone: string) {
+    this.pairedWith = phone;
+    return "K7PQ2M9X";
+  }
 }
 
 function fakeModule() {
@@ -166,5 +171,19 @@ describe("WhatsApp embutido (Baileys)", () => {
     await tick();
     expect(t.sockets[0]!.ended).toBe(true);
     expect(t.events.some((e) => e.type === "qr" && e.qrBase64 === null)).toBe(true);
+  });
+
+  it("gera código para conectar com número de telefone", async () => {
+    const t = setup();
+    const p = t.svc.pairingCode("55 (48) 99999-2210");
+    await tick();
+    t.sockets.at(-1)!.ev.emit("connection.update", { qr: "2@pronto" });
+    expect(await p).toBe("K7PQ-2M9X");
+    expect(t.sockets.at(-1)!.pairedWith).toBe("5548999992210");
+  });
+
+  it("recusa número sem DDI/DDD para o código", async () => {
+    const t = setup();
+    await expect(t.svc.pairingCode("99992210")).rejects.toThrow(/DDI e DDD/);
   });
 });

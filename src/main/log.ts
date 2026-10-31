@@ -44,11 +44,16 @@ export function baileysLogger(file = "whatsapp") {
     log(file, level, `[baileys] ${text}`, typeof obj === "object" && obj !== null ? summarize(obj) : undefined);
   };
   const logger = {
-    level: "warn",
+    level: "info",
     child: () => logger,
     trace: () => {},
     debug: () => {},
-    info: () => {},
+    info: (obj: unknown, msg?: string) => {
+      const text = typeof obj === "string" ? obj : msg ?? "";
+      if (/pair|error|fail|restart|opened|closed|logout|stream/i.test(text)) {
+        log(file, "info", `[baileys] ${text}`, typeof obj === "object" && obj !== null ? summarize(obj) : undefined);
+      }
+    },
     warn: write("warn"),
     error: write("error"),
     fatal: write("error"),
@@ -61,5 +66,7 @@ function summarize(obj: object): unknown {
   const err = o.err ?? o.error;
   if (err instanceof Error) return { error: err.message };
   if (err && typeof err === "object") return { error: (err as { message?: string }).message ?? "erro" };
+  const trace = o.trace ?? o.ackErr;
+  if (trace) return { detalhe: String((trace as { message?: string }).message ?? trace).slice(0, 300) };
   return undefined;
 }

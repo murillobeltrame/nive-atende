@@ -663,6 +663,9 @@ export function createMockApi(): NiveAtendeApi {
     async openLogs() {
       /* sem registros no modo de demonstração */
     },
+    async whatsappPairingCode() {
+      return { ok: true, code: "K7PQ-2M9X", message: "Digite este código no celular da loja." };
+    },
     async getAppInfo() {
       return { version: "0.1.0 (simulação)", platform: "browser" };
     },

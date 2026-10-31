@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { release } from "node:os";
 import type { WAMessage, WASocket } from "baileys";
 import type { ConnectionState, SendResult } from "../evolution/client";
 import { parseMessage, type EvolutionEvent } from "../evolution/parse";
@@ -161,6 +162,37 @@ export class BaileysService implements WhatsAppService {
     return this.state === "open";
   }
 
+  /**
+   * Conectar com número de telefone: gera o código de 8 caracteres para digitar no celular
+   * (WhatsApp > Aparelhos conectados > Conectar aparelho > Conectar com número de telefone).
+   */
+  async pairingCode(phone: string): Promise<string> {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 12 || digits.length > 13 || !digits.startsWith("55")) {
+      throw new Error("Informe o número do WhatsApp da loja com DDI e DDD, ex.: 5548999990000");
+    }
+    if (this.isOpen()) throw new Error("O WhatsApp já está conectado.");
+    this.wanted = true;
+    this.qrCount = 0;
+    // começa uma sessão nova e espera o socket ficar pronto (o primeiro QR indica isso)
+    if (this.sock) this.sock.end(undefined);
+    this.sock = null;
+    this.lastQr = null;
+    this.clearSession();
+    await this.open();
+    await new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, 15_000);
+      this.qrWaiters.push(() => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    if (!this.sock) throw new Error("Não foi possível iniciar a conexão com o WhatsApp. Confira a internet.");
+    const code = await (this.sock as WASocket).requestPairingCode(digits);
+    log("whatsapp", "info", "código de pareamento gerado");
+    return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+  }
+
   async logout(): Promise<void> {
     this.wanted = false;
     try {
@@ -235,12 +267,16 @@ export class BaileysService implements WhatsAppService {
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: b.makeCacheableSignalKeyStore(state.keys, logger as never) },
       logger: logger as never,
-      browser: b.Browsers?.macOS ? (process.platform === "win32" ? b.Browsers.windows("Desktop") : b.Browsers.macOS("Desktop")) : ["Mac OS", "Desktop", "14.4.1"],
+      // Mesma configuração da Evolution API (que pareia sem problemas): cliente web "Chrome" com o nome
+      // do app — aparece no celular como "Chrome (Nive Atende)". "Desktop" não combina com a versão Web.
+      browser: ["Nive Atende", "Chrome", release()],
       connectTimeoutMs: 60_000,
-      qrTimeout: 40_000,
+      keepAliveIntervalMs: 30_000,
+      qrTimeout: 45_000,
+      retryRequestDelayMs: 350,
+      maxMsgRetryCount: 4,
       syncFullHistory: false,
       markOnlineOnConnect: false,
-      shouldSyncHistoryMessage: () => false,
       generateHighQualityLinkPreview: false,
       getMessage: async (key) => (key.id ? this.raw.get(key.id)?.message ?? undefined : undefined),
     });

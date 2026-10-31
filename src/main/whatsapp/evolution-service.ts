@@ -78,6 +78,15 @@ export class EvolutionService implements WhatsAppService {
     return { state: "connecting", ...qr };
   }
 
+  async pairingCode(phone: string): Promise<string> {
+    const c = this.deps.client;
+    if (!(await c.instanceExists())) await c.createInstance();
+    await c.setWebhook(this.deps.webhookUrl());
+    const r = await c.connect(phone.replace(/\D/g, ""));
+    if (!r.pairingCode) throw new Error("A Evolution não devolveu um código de pareamento.");
+    return r.pairingCode;
+  }
+
   async logout(): Promise<void> {
     await this.deps.client.logout().catch(() => undefined);
   }

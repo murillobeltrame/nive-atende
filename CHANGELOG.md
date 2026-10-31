@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.2.3 — 31/10/2026
+
+- Corrige o pareamento do WhatsApp: mesma configuração da Evolution API (cliente "Chrome", sincronização inicial ligada, que o WhatsApp exige para o novo formato de contatos)
+- Nova opção "Conectar com número de telefone": gera um código de 8 caracteres para digitar no celular, sem precisar da câmera
+- Registro mais detalhado do pareamento para suporte
+
 ## v0.2.2 — 31/10/2026
 
 - Corrige chaves que não eram salvas no Mac: se o Chaveiro do sistema falhar, a chave é guardada criptografada num arquivo protegido do app

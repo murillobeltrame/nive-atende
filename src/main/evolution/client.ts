@@ -105,8 +105,9 @@ export class EvolutionClient implements WhatsAppGateway {
   }
 
   /** Inicia a conexão e devolve o QR Code (base64) quando ainda não conectado. */
-  async connect(): Promise<{ qrBase64: string | null; pairingCode: string | null }> {
-    const data = await this.request<Json>("GET", `/instance/connect/${this.instance}`);
+  async connect(number?: string): Promise<{ qrBase64: string | null; pairingCode: string | null }> {
+    const q = number ? `?number=${encodeURIComponent(number)}` : "";
+    const data = await this.request<Json>("GET", `/instance/connect/${this.instance}${q}`);
     const qr = (data.base64 ?? (data.qrcode as Json | undefined)?.base64 ?? null) as string | null;
     return { qrBase64: qr, pairingCode: (data.pairingCode as string | null) ?? null };
   }

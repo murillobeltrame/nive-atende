@@ -30,6 +30,22 @@ export function QrModal({ onClose }: { onClose: () => void }) {
 
   const expired = qr?.state === "close";
 
+  // "Conectar com número de telefone" (sem câmera)
+  const [phone, setPhone] = useState("");
+  const [pair, setPair] = useState<{ ok: boolean; code: string | null; message: string } | null>(null);
+  const [pairing, setPairing] = useState(false);
+  const requestCode = async () => {
+    setPairing(true);
+    setPair(null);
+    try {
+      setPair(await api.whatsappPairingCode(phone));
+    } catch (e) {
+      setPair({ ok: false, code: null, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setPairing(false);
+    }
+  };
+
   useEffect(() => {
     if (qr?.state === "open") {
       const t = setTimeout(onClose, 1500);
@@ -71,6 +87,40 @@ export function QrModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {qr?.message && <small style={{ color: "var(--muted)" }}>{qr.message}</small>}
+            <div className="pair-alt">
+              <div className="field-label">Ou conecte sem câmera, com o número de telefone</div>
+              {pair?.ok && pair.code ? (
+                <>
+                  <div className="pair-code" aria-live="polite">{pair.code}</div>
+                  <small style={{ color: "var(--muted)" }}>
+                    No celular: <b>Aparelhos conectados</b> › <b>Conectar aparelho</b> › <b>Conectar com número de telefone</b> e
+                    digite o código. Ele vale por poucos minutos.
+                  </small>
+                </>
+              ) : (
+                <>
+                  <div className="btn-row" style={{ flexWrap: "nowrap" }}>
+                    <label className="sr-only" htmlFor="pair-phone">
+                      Número do WhatsApp da loja
+                    </label>
+                    <input
+                      id="pair-phone"
+                      className="input"
+                      inputMode="numeric"
+                      placeholder="5548999990000"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ""))}
+                    />
+                    <button className="btn" onClick={() => void requestCode()} disabled={pairing || phone.length < 12}>
+                      {pairing ? "Gerando…" : "Gerar código"}
+                    </button>
+                  </div>
+                  <small style={{ color: pair && !pair.ok ? "#8A2A12" : "var(--muted)" }}>
+                    {pair && !pair.ok ? pair.message : "Número do WhatsApp da loja com 55 e DDD."}
+                  </small>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

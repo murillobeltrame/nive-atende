@@ -22,6 +22,8 @@ export interface WhatsAppService extends WhatsAppGateway {
   connectionState(): Promise<ConnectionState>;
   /** Inicia a conexão e devolve o QR Code (data URL) quando ainda não conectado. */
   connect(): Promise<{ state: ConnectionState; qrBase64: string | null; pairingCode: string | null }>;
+  /** Código de 8 caracteres para "Conectar com número de telefone" no celular. */
+  pairingCode(phone: string): Promise<string>;
   logout(): Promise<void>;
   restart(): Promise<void>;
   test(): Promise<TestResult>;
