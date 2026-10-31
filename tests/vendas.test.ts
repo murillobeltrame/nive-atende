@@ -98,3 +98,17 @@ describe("apagar para todos", () => {
     expect(parseWebhook({ event: "MESSAGES_DELETE", data: { id: "CLI1", remoteJid: JID } })).toEqual([{ type: "revoke", remoteJid: JID, waMessageId: "CLI1" }]);
   });
 });
+
+import { prettyName, toWhatsApp } from "../src/main/ai/format";
+
+describe("formatação das mensagens", () => {
+  it("deixa nomes em CAIXA ALTA legíveis", () => {
+    expect(prettyName("PERFUME CONNOISSEUR WOMAN ARMAF 100 ML FEMININO")).toBe("Perfume Connoisseur Woman Armaf 100 ml Feminino");
+    expect(prettyName("PERFUME ÁRABE DELILAH BLANC DE MAISON ALHAMBRA 100ML")).toBe("Perfume Árabe Delilah Blanc de Maison Alhambra 100ml");
+    expect(prettyName("Tênis Runner preto")).toBe("Tênis Runner preto");
+  });
+
+  it("converte Markdown para a formatação do WhatsApp", () => {
+    expect(toWhatsApp("## Opções\n- **Perfume A** — R$ 10,00\n\n\n\n- [site](https://x.com)")).toBe("*Opções*\n• *Perfume A* — R$ 10,00\n\n• site https://x.com");
+  });
+});

@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.2.5 — 2026-10-31
+
+- Mensagens da IA mais legíveis: um produto por linha, nome e preço em *negrito*, no máximo 3 opções por mensagem e uma pergunta no final.
+- Nomes de produto em CAIXA ALTA chegam à IA já legíveis (ex.: "Perfume Connoisseur Woman Armaf 100 ml").
+- A IA não informa a quantidade em estoque (só "última unidade" quando for o caso).
+- Markdown que a IA eventualmente use é convertido para a formatação do WhatsApp.
+- O app mostra *negrito*, _itálico_ e ~riscado~ nas conversas, como no WhatsApp.
+
 ## v0.2.4 — 2026-10-31
 
 - IA vendedora: entende com naturalidade o que o cliente procura (para quem é, estilo, marca, quanto quer gastar), compara o catálogo antes de oferecer e recomenda as 2–3 melhores opções com estoque. Itens esgotados não são oferecidos.

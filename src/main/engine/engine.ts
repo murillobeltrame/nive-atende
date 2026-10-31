@@ -1,5 +1,6 @@
 // Motor de atendimento: recebe eventos do WhatsApp, decide quando a IA responde e grava quem respondeu.
 import { EventEmitter } from "node:events";
+import { toWhatsApp } from "../ai/format";
 import type { AppSettings, ChatMessage, Conversation, Reservation, SystemEventType } from "../../shared/types";
 import type { Store } from "../store/db";
 import type { NiveApi, NiveProduct } from "../nive/client";
@@ -528,7 +529,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       inTok += res.inputTokens;
       outTok += res.outputTokens;
       if (!res.toolCalls.length) {
-        reply = res.content?.trim() || null;
+        reply = res.content ? toWhatsApp(res.content) || null : null;
         break;
       }
       messages.push({ role: "assistant", content: res.content, tool_calls: res.toolCalls });

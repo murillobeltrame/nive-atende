@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { hhmm } from "../lib/format";
 import { IconFile, IconImage, IconMapPin, IconPause, IconPlay, IconRepeat } from "./Icons";
 import { HumanTag, IaTag } from "./Tag";
+import { WaText } from "./WaText";
 
 const mediaCache = new Map<string, string | null>();
 
@@ -166,7 +167,7 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
         </div>
       )}
       {m.kind === "sticker" && <Sticker m={m} onResend={onResendSticker} />}
-      {m.text && m.kind !== "sticker" && <span>{m.text}</span>}
+      {m.text && m.kind !== "sticker" && <WaText text={m.text} />}
       {m.kind === "unknown" && !m.text && <i>Mensagem sem pré-visualização</i>}
       {m.transcript && (
         <div className="transcript">

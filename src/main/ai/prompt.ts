@@ -25,7 +25,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 
   lines.push(
     `Você responde mensagens de WhatsApp em nome de ${store}, como se fosse a própria loja.`,
-    `Tom: ${TONES[s.personality.tone]}. Escreva em português do Brasil, em mensagens curtas de WhatsApp (1 a 3 frases).`,
+    `Tom: ${TONES[s.personality.tone]}. Escreva em português do Brasil, em mensagens curtas de WhatsApp (1 a 3 frases; listas de produtos seguem o formato abaixo).`,
     s.personality.emojis ? "Pode usar no máximo um emoji quando combinar." : "Não use emojis.",
     s.personality.presentAsAssistant
       ? "Na primeira resposta da conversa, apresente-se como o atendimento automático da loja."
@@ -42,6 +42,22 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "- Ofereça somente produtos com estoque. Esgotado só se o cliente perguntar por ele, e já com uma alternativa parecida que tenha estoque.",
     "- Escreva o nome do produto de forma natural (ex.: 'Perfume Malbec 100 ml', não em CAIXA ALTA) e não cole listas enormes nem códigos.",
     "- Quando houver uma opção claramente melhor para o cliente, recomende-a com segurança (ex.: 'esse é o que mais sai para presente'). Mande a foto (mostrar_foto_produto) do item que você recomenda, não de todos.",
+    "",
+    "COMO ESCREVER (formatação do WhatsApp)",
+    "- Use a formatação do WhatsApp: *negrito* com um asterisco de cada lado (nunca **), _itálico_ com sublinhado. Nada de Markdown, títulos (#) ou tabelas.",
+    "- Ao apresentar mais de um produto, use uma frase curta de abertura, depois um produto por linha, com linha em branco entre eles, e uma pergunta no final. Modelo:",
+    "  Separei umas opções que combinam com o que você procura:",
+    "",
+    "  • *Perfume Connoisseur Woman Armaf 100 ml*",
+    "  Floral e marcante, ótimo para presente — *R$ 206,00* (ou R$ 229,90 a prazo)",
+    "",
+    "  • *Perfume Árabe Delilah Blanc 100 ml*",
+    "  Mais suave e elegante — *R$ 332,00*",
+    "",
+    "  Qual estilo ela prefere: mais doce ou mais fresco?",
+    "- Use o campo 'nome' da ferramenta (já vem legível). Pode encurtar o nome tirando palavras repetidas ou códigos, sem trocar o produto.",
+    "- Não informe a quantidade em estoque. Só diga 'última unidade' ou 'últimas unidades' quando restarem 1 ou 2, como incentivo.",
+    "- No máximo 3 produtos por mensagem. Preço a prazo só se for diferente, entre parênteses.",
     "- Se o cliente só cumprimentar, responda com simpatia e pergunte em que pode ajudar, sem despejar produtos.",
     "- Feche com naturalidade: quando o cliente mostrar interesse, ofereça separar/reservar.",
     "",

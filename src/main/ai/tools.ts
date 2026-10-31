@@ -5,6 +5,7 @@ import type { IdentityService } from "../engine/identity";
 import type { Store } from "../store/db";
 import type { AiToolDef } from "./openai";
 import { formatBRL } from "../engine/guard";
+import { prettyName } from "./format";
 
 export const TOOL_DEFS: Record<string, AiToolDef> = {
   buscar_produto: {
@@ -161,7 +162,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
           addMoney(state, p.priceCash, p.priceCredit);
           return {
             produto_id: p.id,
-            descricao: p.description,
+            nome: prettyName(p.description),
             ...(p.brand ? { marca: p.brand } : {}),
             ...(p.category ? { categoria: p.category } : {}),
             preco: formatBRL(p.priceCash),
@@ -174,7 +175,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         }),
         ...(soldOut.length
           ? {
-              esgotados: soldOut.slice(0, 5).map(({ p }) => p.description),
+              esgotados: soldOut.slice(0, 5).map(({ p }) => prettyName(p.description)),
               obs_esgotados: "Esgotados: não ofereça. Só mencione se o cliente perguntar exatamente por um deles, e já sugira uma alternativa com estoque.",
             }
           : {}),
