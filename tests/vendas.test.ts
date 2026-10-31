@@ -112,3 +112,19 @@ describe("formatação das mensagens", () => {
     expect(toWhatsApp("## Opções\n- **Perfume A** — R$ 10,00\n\n\n\n- [site](https://x.com)")).toBe("*Opções*\n• *Perfume A* — R$ 10,00\n\n• site https://x.com");
   });
 });
+
+describe("digitando…", () => {
+  it("mostra 'digitando' enquanto a IA busca e para depois de responder", async () => {
+    const t = setup();
+    let presenceWhileThinking: string[] = [];
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), () => {
+      presenceWhileThinking = [...t.wa.presence];
+      return reply("Tenho sim! R$ 159,90.");
+    });
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    expect(presenceWhileThinking).toEqual(["composing"]);
+    expect(t.wa.presence.at(-1)).toBe("paused");
+    expect(t.wa.sent).toHaveLength(1);
+  });
+});

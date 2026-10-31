@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.2.6 — 2026-10-31
+
+- O cliente vê "digitando…" no WhatsApp enquanto a IA busca as informações e prepara a resposta (renovado a cada 8 s até enviar).
+- WhatsApp embutido: a loja fica "disponível" e inscrita na conversa, para o "digitando…" aparecer de fato no celular do cliente.
+
 ## v0.2.5 — 2026-10-31
 
 - Mensagens da IA mais legíveis: um produto por linha, nome e preço em *negrito*, no máximo 3 opções por mensagem e uma pergunta no final.

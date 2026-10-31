@@ -352,6 +352,19 @@ export class Engine extends EventEmitter<EngineEvents> {
       return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa");
     }
 
+    // a partir daqui a IA vai trabalhar: o cliente vê "digitando…" enquanto ela busca e responde
+    this.startTyping(conv.id);
+    try {
+      await this.replyWithAi(conv, fresh, ids);
+    } finally {
+      this.stopTyping(conv.id);
+    }
+  }
+
+  private async replyWithAi(conversation: Conversation, fresh: ChatMessage[], ids: string[]): Promise<void> {
+    const store = this.deps.store;
+    const s = this.s;
+    let conv = conversation;
     // áudios: transcreve antes
     for (const m of fresh.filter((x) => x.kind === "audio" && !x.transcript)) {
       if (!s.audio.transcribe) {
@@ -425,6 +438,26 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (reply) await this.sendAiText(conv.id, reply, { countsAsAiReply: true });
     if (state.handoffReason) return this.handoff(conv.id, state.handoffReason, false);
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
+  }
+
+  /** Mostra "digitando…" para o cliente e renova a cada 8 s (o WhatsApp apaga sozinho depois de uns 25 s). */
+  private typing = new Map<string, unknown>();
+
+  private startTyping(jid: string): void {
+    if (this.typing.has(jid)) return;
+    const tick = () => {
+      void this.deps.wa.sendPresence(jid, "composing", 9000).catch(() => undefined);
+      this.typing.set(jid, this.setTimer(tick, 8000));
+    };
+    tick();
+  }
+
+  private stopTyping(jid: string): void {
+    const t = this.typing.get(jid);
+    if (t === undefined) return;
+    this.clearTimer(t);
+    this.typing.delete(jid);
+    void this.deps.wa.sendPresence(jid, "paused", 0).catch(() => undefined);
   }
 
   private findUnconfirmedMoney(conversationId: string, reply: string, state: ToolRunState): number[] {
@@ -594,8 +627,11 @@ export class Engine extends EventEmitter<EngineEvents> {
     const msg = store.insertMessage({ conversationId, origin: "ia", kind: "text", text, status: "pending" });
     this.emit("message", msg);
     try {
-      const typingMs = Math.min(4000, 800 + text.length * 25);
-      await this.deps.wa.sendPresence(conversationId, "composing", typingMs);
+      // já está "digitando" desde que a IA começou; fora disso, mostra um instante antes de enviar
+      if (!this.typing.has(conversationId)) {
+        const typingMs = Math.min(4000, 800 + text.length * 25);
+        await this.deps.wa.sendPresence(conversationId, "composing", typingMs);
+      }
       const r = await this.withInFlight(() => this.deps.wa.sendText(conversationId, text));
       const sent = store.updateMessage(msg.id, { waMessageId: r.waMessageId, status: "sent" });
       this.emit("message", sent);

@@ -422,9 +422,19 @@ export class BaileysService implements WhatsAppService {
     return BaileysService.result(await this.requireSock().sendMessage(jid, { sticker: Buffer.from(base64, "base64") }));
   }
 
+  private presenceSubscribed = new Set<string>();
+
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused"): Promise<void> {
     try {
-      await this.sock?.sendPresenceUpdate(presence, jid);
+      if (!this.sock || this.state !== "open") return;
+      // o WhatsApp só mostra "digitando…" de quem está "disponível" e inscrito na conversa
+      if (presence !== "paused" && !this.presenceSubscribed.has(jid)) {
+        await this.sock.sendPresenceUpdate("available");
+        await this.sock.presenceSubscribe(jid).catch(() => undefined);
+        this.presenceSubscribed.add(jid);
+        if (this.presenceSubscribed.size > 500) this.presenceSubscribed.clear();
+      }
+      await this.sock.sendPresenceUpdate(presence, jid);
     } catch {
       /* opcional */
     }

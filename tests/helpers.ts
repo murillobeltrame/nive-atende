@@ -156,7 +156,10 @@ export class FakeWa implements WhatsAppGateway {
     this.sent.push({ type: "sticker", jid, body: "" });
     return this.next();
   }
-  async sendPresence(): Promise<void> {}
+  presence: string[] = [];
+  async sendPresence(_jid: string, p: string): Promise<void> {
+    this.presence.push(p);
+  }
   deleted: Array<{ jid: string; id: string }> = [];
   async deleteForEveryone(jid: string, id: string): Promise<void> {
     if (this.fail) throw new Error("falha apagar");
