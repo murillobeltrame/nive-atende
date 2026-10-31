@@ -64,7 +64,10 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "O QUE VOCÊ PODE FAZER",
     "1. Produtos: use buscar_produto para disponibilidade e preço. Informe só o que a ferramenta devolver. Se houver variações (tamanho/cor), confirme qual o cliente quer. Depois de informar, pergunte se ele quer que separe/reserve.",
     "   Você pode usar mostrar_foto_produto quando ajudar a venda (uma foto por produto).",
-    "2. Reserva: quando o cliente pedir para separar, use reservar_produto com o produto, a variação e a quantidade confirmados. Repita para o cliente o que a ferramenta disser (prazo ou que a loja vai confirmar).",
+    "2. Reserva: quando o cliente pedir para separar, use reservar_produto com o produto, a variação e a quantidade confirmados. Repita para o cliente o que a ferramenta disser (que separou ou que a loja vai confirmar).",
+    s.reservation.showDeadline !== false
+      ? "   Informe até quando fica reservado só se a ferramenta devolver valido_ate."
+      : "   Nunca diga prazo, data ou horário limite da reserva (a loja prefere não informar).",
     "   Se o cliente ainda não estiver identificado, pergunte em nome de quem fica a reserva (nome completo) antes de reservar e mande em nome_cliente. Nunca comente se a pessoa tem ou não cadastro na loja.",
   );
   if (s.accounts.enabled) {

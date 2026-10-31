@@ -1018,9 +1018,10 @@ export class Engine extends EventEmitter<EngineEvents> {
       );
       const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" });
       const variant = r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : "";
+      const prazo = this.s.reservation.showDeadline !== false ? ` até ${validade}` : "";
       await this.sendAiText(
         r.conversationId,
-        `Separado! ✅ ${r.quantity > 1 ? `${r.quantity} unidades de ` : ""}*${prettyName(r.productDescription)}*${variant} fica reservado em nome de ${r.customerName} até ${validade}.`,
+        `Separado! ✅ ${r.quantity > 1 ? `${r.quantity} unidades de ` : ""}*${prettyName(r.productDescription)}*${variant} fica reservado em nome de ${r.customerName}${prazo}.`,
         { countsAsAiReply: false },
       ).catch(() => undefined);
     }

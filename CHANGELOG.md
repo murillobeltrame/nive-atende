@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.2.11 — 2026-10-31
+
+- Nova opção em Configurações → Reserva: "Informar ao cliente até quando fica reservado". Desligada, a confirmação sai sem data/horário limite e a IA também não fala em prazo (a validade continua valendo internamente).
+
 ## v0.2.10 — 2026-10-31
 
 - "Responder só assuntos da loja" (ligado por padrão, em Configurações → Atendimento): antes de responder, a IA confere se a mensagem é sobre a loja. Conversa pessoal (família, amigos, fornecedores, representantes) fica sem resposta automática, sem "digitando…" e sem alerta, e aparece na conversa como "A IA não respondeu: parece conversa pessoal".

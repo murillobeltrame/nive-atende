@@ -250,7 +250,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
       if (r.status === "created") {
         state.actions.push({ label: `Reservou ${quantity}× ${product.description} (${variant.label})${r.orderNumber ? ` · pedido #${r.orderNumber}` : ""}`, kind: "info" });
-        return { resultado: "RESERVADO", valido_ate: validade, total: formatBRL(product.priceCash * quantity), instrucao: "Confirme que separou e diga até quando fica reservado." };
+        return ctx.settings.reservation.showDeadline !== false
+          ? { resultado: "RESERVADO", valido_ate: validade, total: formatBRL(product.priceCash * quantity), instrucao: "Confirme que separou e diga até quando fica reservado." }
+          : { resultado: "RESERVADO", total: formatBRL(product.priceCash * quantity), instrucao: "Confirme que separou. Não fale em prazo ou data limite da reserva." };
       }
       if (r.status === "pending_approval") {
         state.actions.push({ label: `Pedido de reserva aguardando aprovação: ${quantity}× ${product.description}`, kind: "info" });

@@ -119,7 +119,7 @@ export function createMockApi(): NiveAtendeApi {
       catchUpWindowMinutes: 120,
       onlyStoreTopics: true,
     },
-    reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true },
+    reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true },
     accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
     personality: {
       storeName: "Loja Exemplo",

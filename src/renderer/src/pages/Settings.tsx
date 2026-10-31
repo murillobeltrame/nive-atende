@@ -772,6 +772,16 @@ function ReservationSection({ settings, onSettings }: Pick<Props, "settings" | "
             hint="Se o número não estiver no cadastro, a reserva fica para você aprovar."
           />
           <Check
+            label="Informar ao cliente até quando fica reservado"
+            checked={d.showDeadline ?? true}
+            onChange={(v) => setD({ ...d, showDeadline: v })}
+            hint={
+              (d.showDeadline ?? true)
+                ? "Ligado: “Separado! … fica reservado até domingo, 19:51.”"
+                : "Desligado: “Separado! … fica reservado em seu nome.” (a validade continua valendo internamente)."
+            }
+          />
+          <Check
             label="Cancelar o rascunho quando a reserva vencer"
             checked={d.cancelExpiredDrafts ?? true}
             onChange={(v) => setD({ ...d, cancelExpiredDrafts: v })}

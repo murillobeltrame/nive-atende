@@ -161,6 +161,8 @@ export interface AppSettings {
     maxQtyPerOrder: number;
     /** Cancela o rascunho no ERP quando a reserva vence sem a venda ser finalizada. */
     cancelExpiredDrafts: boolean;
+    /** Informa ao cliente até quando o produto fica reservado. */
+    showDeadline: boolean;
     requireCustomer: boolean;
   };
   accounts: { enabled: boolean; secondFactor: SecondFactor; showCharges: boolean };

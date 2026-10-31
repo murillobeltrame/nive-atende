@@ -190,3 +190,31 @@ describe("cancelar reserva pelo app", () => {
     expect(t.store.getReservation(r.id)!.status).toBe("completed");
   });
 });
+
+describe("prazo da reserva na mensagem", () => {
+  it("informa até quando fica reservado quando ligado", async () => {
+    const t = setup();
+    const r = await ask(t, "Pedro Alves");
+    await t.engine.approveReservation(r.id);
+    expect(t.wa.sent.at(-1)!.body).toMatch(/ até /);
+  });
+
+  it("não informa o prazo quando desligado (nem para a IA)", async () => {
+    const t = setup({ settings: { reservation: { showDeadline: false } } });
+    const r = await ask(t, "Pedro Alves");
+    await t.engine.approveReservation(r.id);
+    expect(t.wa.sent.at(-1)!.body).not.toMatch(/ até /);
+    expect(t.wa.sent.at(-1)!.body).toContain("em nome de Pedro Alves.");
+
+    const t2 = setup({ settings: { reservation: { showDeadline: false, autoEnabled: true } } });
+    let toolResult = "";
+    t2.ai.script(reserve("Pedro Alves"), (msgs) => {
+      toolResult = String(msgs.at(-1)!.content);
+      return reply("Separado!");
+    });
+    await t2.engine.handleInbound(inbound(PHONE, "separa pra mim"));
+    await t2.clock.advance(2000);
+    expect(toolResult).toContain("RESERVADO");
+    expect(toolResult).not.toContain("valido_ate");
+  });
+});
