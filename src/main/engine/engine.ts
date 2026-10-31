@@ -470,10 +470,14 @@ export class Engine extends EventEmitter<EngineEvents> {
       }
     }
 
-    for (const photo of state.photos.slice(0, 2)) {
-      await this.sendAiMedia(conv.id, photo.url, photo.caption);
+    const photos = state.photos.slice(0, 2);
+    if (photos.length === 1 && reply && reply.length <= 1000) {
+      // uma foto: vai junto com a resposta, como legenda (uma mensagem só, como no WhatsApp)
+      await this.sendAiMedia(conv.id, photos[0]!.url, photos[0]!.caption, reply);
+    } else {
+      for (const photo of photos) await this.sendAiMedia(conv.id, photo.url, photo.caption, null);
+      if (reply) await this.sendAiText(conv.id, reply, { countsAsAiReply: true });
     }
-    if (reply) await this.sendAiText(conv.id, reply, { countsAsAiReply: true });
     if (state.handoffReason) return this.handoff(conv.id, state.handoffReason, false);
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
   }
@@ -605,6 +609,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       let content: string;
       const raw = m.transcript ?? m.text ?? "";
       if (m.kind === "audio") content = raw ? `(áudio) ${raw}` : "(áudio que não foi possível entender)";
+      else if (m.kind === "image" && m.origin === "ia") content = raw || `Foto enviada: ${m.fileName ?? "produto"}`;
       else if (m.kind === "image") content = `[imagem]${raw ? " " + raw : ""}`;
       else if (m.kind === "sticker") content = "[figurinha]";
       else if (m.kind === "video") content = `[vídeo]${raw ? " " + raw : ""}`;
@@ -750,18 +755,43 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
   }
 
-  private async sendAiMedia(conversationId: string, url: string, caption: string): Promise<void> {
+  /**
+   * Envia a foto de um produto. Com "caption", a resposta da IA vai como legenda (conta como resposta);
+   * sem legenda, só a foto. O nome do produto fica guardado para o histórico da IA.
+   */
+  private async sendAiMedia(conversationId: string, url: string, productName: string, caption: string | null): Promise<void> {
     const store = this.deps.store;
     // baixa a foto uma vez: o mesmo arquivo vai para o cliente e fica visível na conversa do app
     const img = await (this.deps.fetchImage ?? defaultFetchImage)(url).catch(() => null);
     const mime = img?.mime ?? "image/jpeg";
-    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "image", text: caption, mediaMime: mime, hasMedia: Boolean(img), status: "pending" });
+    const msg = store.insertMessage({
+      conversationId,
+      origin: "ia",
+      kind: "image",
+      text: caption,
+      fileName: prettyName(productName),
+      mediaMime: mime,
+      hasMedia: Boolean(img),
+      status: "pending",
+    });
     if (img) store.saveMedia(msg.id, mime, img.data);
     this.emit("message", msg);
     try {
       const media = img ? img.data.toString("base64") : url;
-      const r = await this.withInFlight(() => this.deps.wa.sendMedia(conversationId, { mediatype: "image", mimetype: mime, media, caption: "" }));
+      const r = await this.withInFlight(() => this.deps.wa.sendMedia(conversationId, { mediatype: "image", mimetype: mime, media, caption: caption ?? "" }));
       this.emit("message", store.updateMessage(msg.id, { waMessageId: r.waMessageId, status: "sent" }));
+      if (caption) {
+        const conv = store.getConversation(conversationId)!;
+        const updated = store.updateConversation(conversationId, {
+          lastMessageAt: this.now(),
+          lastPreview: `Foto: ${caption.slice(0, 130)}`,
+          lastOrigin: "ia",
+          aiRepliesCount: conv.aiRepliesCount + 1,
+        });
+        store.addUsage(this.now(), { aiReplies: 1 });
+        this.emit("conversation", updated);
+        this.emit("usage");
+      }
     } catch {
       this.emit("message", store.updateMessage(msg.id, { status: "failed" }));
     }

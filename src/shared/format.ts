@@ -27,6 +27,9 @@ export function prettyName(name: string): string {
 /** Converte Markdown que a IA às vezes usa para a formatação do WhatsApp. */
 export function toWhatsApp(text: string): string {
   return text
+    // marcações internas do histórico que a IA às vezes copia: [imagem], [foto], [figurinha]…
+    .replace(/\[(imagem|foto|figurinha|v[ií]deo|documento|[aá]udio|localiza[cç][aã]o|contato)[^\]]{0,40}\]\s*/gi, "")
+    .replace(/^\s*foto enviada:[^\n]*\n?/gim, "")
     .replace(/\*\*(.+?)\*\*/g, "*$1*") // **negrito** → *negrito*
     .replace(/__(.+?)__/g, "_$1_")
     .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // títulos

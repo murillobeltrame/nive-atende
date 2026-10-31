@@ -221,7 +221,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       const p = state.products.get(id) ?? (await ctx.nive.getProduct(id));
       if (!p || !p.imageUrl) return { resultado: "SEM_FOTO" };
       if (!state.photos.some((ph) => ph.url === p.imageUrl)) state.photos.push({ url: p.imageUrl, caption: p.description });
-      return { resultado: "FOTO_SERA_ENVIADA", instrucao: "A foto será enviada antes da sua mensagem; não precisa descrevê-la." };
+      return { resultado: "FOTO_SERA_ENVIADA", instrucao: "A foto vai junto com a sua próxima mensagem, como legenda. Escreva a mensagem normalmente (sem marcações como [imagem] e sem dizer 'enviei a foto')." };
     }
 
     case "reservar_produto": {

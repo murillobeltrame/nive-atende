@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.2.13 — 2026-10-31
+
+- Foto + resposta numa mensagem só: quando a IA manda uma foto, a resposta vai como legenda da imagem (como no WhatsApp), em vez de foto com o nome do produto e depois outra mensagem.
+- Corrigido o "[imagem]" que aparecia no começo de respostas da IA: o histórico não usa mais essa marcação para fotos enviadas pela loja, e marcações internas são removidas antes de enviar.
+
 ## v0.2.12 — 2026-10-31
 
 - IA vendedora de verdade, para qualquer ramo: em pedido amplo ("tem perfume?", "quero uma roupa", "vende chocolate?") ela primeiro entende a necessidade com uma pergunta de vendedor (ex.: mais fresco, doce ou intenso; ocasião; tamanho; presente ou uso próprio) e só depois oferece 2–3 opções com o motivo de cada uma.

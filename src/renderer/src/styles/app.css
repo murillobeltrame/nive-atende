@@ -1843,3 +1843,8 @@ td .sub {
     animation: none;
   }
 }
+.media-caption {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}

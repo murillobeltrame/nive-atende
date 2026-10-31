@@ -165,3 +165,30 @@ describe("não repete produto e mostra o que a IA está fazendo", () => {
     expect(p).toContain("ja_mostrado");
   });
 });
+
+describe("foto com legenda", () => {
+  it("uma foto vai com a resposta como legenda, numa mensagem só", async () => {
+    const t = setup();
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), toolCall("mostrar_foto_produto", { produto_id: "p-bolsa" }), reply("[imagem] Olha ela aqui! R$ 159,90."));
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    const ia = t.store.listMessages(JID).filter((m) => m.origin === "ia");
+    expect(ia).toHaveLength(1);
+    expect(ia[0]!.kind).toBe("image");
+    expect(ia[0]!.text).toBe("Olha ela aqui! R$ 159,90.");
+    expect(ia[0]!.fileName).toBe("Bolsa caramelo");
+  });
+
+  it("no histórico a foto aparece sem a marcação [imagem]", async () => {
+    const t = setup();
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), toolCall("mostrar_foto_produto", { produto_id: "p-bolsa" }), reply("Olha ela! R$ 159,90."));
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    t.ai.script(reply("Quer que eu separe?"));
+    await t.engine.handleInbound(inbound(PHONE, "linda"));
+    await t.clock.advance(2000);
+    const hist = t.ai.received.at(-1)!.filter((m) => m.role === "assistant").map((m) => String(m.content));
+    expect(hist.join("\n")).not.toContain("[imagem]");
+  });
+});

@@ -168,6 +168,7 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
       )}
       {m.kind === "sticker" && <Sticker m={m} onResend={onResendSticker} />}
       {m.text && m.kind !== "sticker" && <WaText text={m.text} />}
+      {!m.text && m.kind === "image" && m.origin === "ia" && m.fileName && <span className="media-caption">{m.fileName}</span>}
       {m.kind === "unknown" && !m.text && <i>Mensagem sem pré-visualização</i>}
       {m.transcript && (
         <div className="transcript">
