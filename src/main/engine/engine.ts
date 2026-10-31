@@ -992,6 +992,30 @@ export class Engine extends EventEmitter<EngineEvents> {
     return r;
   }
 
+  /** Lojista cancelou a reserva pelo app. */
+  async cancelReservation(id: string): Promise<Reservation> {
+    const store = this.deps.store;
+    const r = store.getReservation(id);
+    if (!r) throw new Error("Reserva não encontrada");
+    if (r.status !== "created" && r.status !== "pending_approval" && r.status !== "failed") return r;
+    if (r.status === "created" && r.saleId) {
+      const out = await this.deps.nive.cancelDraftSale(r.saleId, "Reserva cancelada pela loja no Nive Atende");
+      if (out === "not_draft") {
+        const done = store.updateReservation(r.id, { status: "completed" });
+        this.emit("reservation", done);
+        throw new Error("Essa venda já foi finalizada no sistema Nive; para desfazer, cancele a venda por lá.");
+      }
+    }
+    const updated = store.updateReservation(r.id, { status: "cancelled" });
+    this.emit("reservation", updated);
+    this.addSystemEvent(
+      r.conversationId,
+      "reservation_expired",
+      `Reserva cancelada pela loja: ${r.quantity}× ${prettyName(r.productDescription)}${r.saleId ? " (rascunho cancelado no sistema)" : ""}`,
+    );
+    return updated;
+  }
+
   /**
    * Confere no ERP os rascunhos das reservas ativas: finalizado vira "Finalizada";
    * excluído ou cancelado por lá vira "Removida".

@@ -66,6 +66,8 @@ export interface NiveAtendeApi {
   listReservations(): Promise<Reservation[]>;
   approveReservation(id: string): Promise<Reservation>;
   rejectReservation(id: string): Promise<Reservation>;
+  /** Cancela a reserva; se já virou rascunho, cancela o rascunho no ERP (as peças voltam ao estoque). */
+  cancelReservation(id: string): Promise<Reservation>;
   getUsage(): Promise<UsageSummary>;
   listAudit(limit?: number): Promise<AuditEntry[]>;
 
@@ -127,6 +129,7 @@ export const RPC_METHODS = [
   "listReservations",
   "approveReservation",
   "rejectReservation",
+  "cancelReservation",
   "getUsage",
   "listAudit",
   "openExternal",

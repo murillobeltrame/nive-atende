@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.2.9 — 2026-10-31
+
+- Botão "Cancelar reserva" na tela de Reservas (com confirmação): cancela o rascunho no sistema Nive, as peças voltam ao estoque e a reserva aparece como "Cancelada". Venda já finalizada não é cancelada por aqui.
+
 ## v0.2.8 — 2026-10-31
 
 - Reservas acompanham o ERP: quando o rascunho é finalizado no sistema Nive, a reserva aparece como "Finalizada"; quando é excluído ou cancelado por lá, aparece como "Removida". A conferência roda a cada 2 minutos e ao abrir a tela de Reservas.

@@ -13,6 +13,7 @@ const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
   expired: { label: "Vencida", cls: "tag-ignored" },
   completed: { label: "Finalizada", cls: "tag-ok" },
   removed: { label: "Removida", cls: "tag-ignored" },
+  cancelled: { label: "Cancelada", cls: "tag-ignored" },
 };
 
 function dt(ts: number) {
@@ -23,6 +24,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
   const [items, setItems] = useState<Reservation[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
 
   useEffect(() => {
     void api.listReservations().then(setItems);
@@ -44,7 +46,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
       const r = await fn(id);
       setItems((prev) => prev.map((x) => (x.id === r.id ? r : x)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(e));
     } finally {
       setBusy(null);
     }
@@ -121,6 +123,28 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                         <button className="btn sm" onClick={() => onOpenConversation(r.conversationId)}>
                           Conversa
                         </button>
+                        {r.status === "created" &&
+                          (confirmCancel === r.id ? (
+                            <>
+                              <button className="btn sm" disabled={busy === r.id} onClick={() => setConfirmCancel(null)}>
+                                Voltar
+                              </button>
+                              <button
+                                className="btn sm danger"
+                                disabled={busy === r.id}
+                                onClick={() => {
+                                  setConfirmCancel(null);
+                                  void act(r.id, api.cancelReservation);
+                                }}
+                              >
+                                {busy === r.id ? "Cancelando…" : "Confirmar: cancelar rascunho"}
+                              </button>
+                            </>
+                          ) : (
+                            <button className="btn sm danger" disabled={busy === r.id} onClick={() => setConfirmCancel(r.id)}>
+                              Cancelar reserva
+                            </button>
+                          ))}
                         {(r.status === "pending_approval" || r.status === "failed") && (
                           <>
                             <button

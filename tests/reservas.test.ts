@@ -171,3 +171,22 @@ describe("reserva acompanhada no ERP", () => {
     expect(t.store.getReservation(a.id)!.status).toBe("created");
   });
 });
+
+describe("cancelar reserva pelo app", () => {
+  it("cancela o rascunho no ERP e marca como Cancelada", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const r = await ask(t, "Pedro Alves");
+    const out = await t.engine.cancelReservation(r.id);
+    expect(out.status).toBe("cancelled");
+    expect(t.nive.cancelled).toEqual([r.saleId]);
+    expect(t.store.listMessages(JID).some((m) => m.text?.includes("Reserva cancelada pela loja"))).toBe(true);
+  });
+
+  it("não cancela venda já finalizada", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const r = await ask(t, "Pedro Alves");
+    t.nive.saleStatus[r.saleId!] = "COMPLETED";
+    await expect(t.engine.cancelReservation(r.id)).rejects.toThrow(/já foi finalizada/);
+    expect(t.store.getReservation(r.id)!.status).toBe("completed");
+  });
+});

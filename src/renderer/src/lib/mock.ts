@@ -616,6 +616,12 @@ export function createMockApi(): NiveAtendeApi {
       ev.message.emit({ ...m });
       return { ...m };
     },
+    async cancelReservation(id) {
+      const r = reservations.find((x) => x.id === id)!;
+      r.status = "cancelled";
+      ev.reservation.emit({ ...r });
+      return { ...r };
+    },
     async takeOver(conversationId) {
       const c = findConv(conversationId);
       c.state = "humano";

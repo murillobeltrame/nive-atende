@@ -524,6 +524,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   },
   approveReservation: (id) => engine.approveReservation(id),
   rejectReservation: (id) => engine.rejectReservation(id),
+  cancelReservation: (id) => engine.cancelReservation(id),
   getUsage: () => usageSummary(),
   listAudit: (limit) => store.listAudit(limit ?? 200),
   openExternal: async (url) => {
