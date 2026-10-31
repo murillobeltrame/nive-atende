@@ -1,0 +1,84 @@
+{
+  "name": "nive-atende",
+  "productName": "Nive Atende",
+  "version": "0.1.0",
+  "description": "Atendente automático de WhatsApp para lojistas Nive",
+  "author": "Nive Sistemas",
+  "private": true,
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "node scripts/build-main.mjs",
+    "build:renderer": "vite build --config vite.config.ts",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.renderer.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:mac": "npm run build && electron-builder --mac dmg",
+    "evolution:up": "docker compose -f docker/docker-compose.yml up -d",
+    "evolution:down": "docker compose -f docker/docker-compose.yml down"
+  },
+  "dependencies": {
+    "ffmpeg-static": "5.3.0",
+    "openai": "5.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.9.0",
+    "electron-builder": "26.17.0",
+    "esbuild": "0.25.12",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "3.2.7"
+  },
+  "build": {
+    "appId": "br.com.nivesistemas.atende",
+    "productName": "Nive Atende",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Nive Atende"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "resources/icon.png",
+      "category": "public.app-category.business"
+    },
+    "extraResources": [
+      {
+        "from": "resources/tray",
+        "to": "tray"
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
+    ]
+  }
+}
