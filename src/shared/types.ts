@@ -53,6 +53,7 @@ export type SystemEventType =
   | "identification_blocked"
   | "reservation_created"
   | "reservation_pending"
+  | "reservation_expired"
   | "paused_by_phone" // humano respondeu pelo celular
   | "error";
 
@@ -89,7 +90,16 @@ export interface Conversation {
 
 export type ConversationFilter = "todas" | "precisa" | "ia" | "humano";
 
-export type ReservationStatus = "pending_approval" | "created" | "failed" | "rejected";
+export type ReservationStatus = "pending_approval" | "created" | "failed" | "rejected" | "expired" | "completed";
+
+/** Como a reserva se liga ao cadastro de clientes do ERP. */
+export type ReservationCustomerStatus =
+  | "identified" // identificado pelo telefone/CPF na conversa
+  | "found_by_name" // encontrado no cadastro pelo nome informado
+  | "new" // não existe: será cadastrado ao lançar o rascunho
+  | "created_new" // foi cadastrado pelo Nive Atende
+  | "ambiguous" // vários clientes com o mesmo nome: rascunho sai sem cliente
+  | "none"; // cliente não informou o nome
 
 export interface Reservation {
   id: string;
@@ -105,6 +115,7 @@ export interface Reservation {
   saleId: string | null;
   orderNumber: number | null;
   status: ReservationStatus;
+  customerStatus: ReservationCustomerStatus;
   expiresAt: number;
   createdAt: number;
   error: string | null;
@@ -145,6 +156,8 @@ export interface AppSettings {
     autoEnabled: boolean;
     validityHours: number;
     maxQtyPerOrder: number;
+    /** Cancela o rascunho no ERP quando a reserva vence sem a venda ser finalizada. */
+    cancelExpiredDrafts: boolean;
     requireCustomer: boolean;
   };
   accounts: { enabled: boolean; secondFactor: SecondFactor; showCharges: boolean };

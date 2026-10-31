@@ -88,6 +88,22 @@ export interface NiveApi {
   searchProducts(term: string, limit?: number): Promise<NiveProduct[]>;
   getProduct(productId: string): Promise<NiveProduct | null>;
   createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }): Promise<NiveDraftSale>;
+  /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
+  findCustomersByName(name: string): Promise<NiveCustomer[]>;
+  createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer>;
+  /** Cancela um rascunho (mantém o histórico no ERP). Não mexe em venda já finalizada. */
+  cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found">;
+}
+
+/** Normaliza nome para comparar: sem acentos, minúsculo, espaços simples. */
+export function normalizeName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 type Json = Record<string, unknown>;
@@ -292,6 +308,39 @@ export class NiveClient implements NiveApi {
       if (e instanceof NiveApiError && e.status === 404) return null;
       throw e;
     }
+  }
+
+  async findCustomersByName(name: string): Promise<NiveCustomer[]> {
+    const target = normalizeName(name);
+    if (target.length < 3) return [];
+    const raw = await this.request<unknown>("GET", `/customers?q=${encodeURIComponent(name.trim())}`);
+    const list = Array.isArray(raw) ? raw : Array.isArray((raw as Json)?.items) ? ((raw as Json).items as unknown[]) : [];
+    return (list as Json[]).map(toCustomer).filter((c) => normalizeName(c.name) === target);
+  }
+
+  async createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer> {
+    const raw = await this.request<Json>("POST", "/customers", {
+      name: input.name.trim().slice(0, 200),
+      ...(input.phone ? { phone: input.phone } : {}),
+      notes: "Cadastrado pelo Nive Atende (reserva pelo WhatsApp)",
+    });
+    return toCustomer(raw);
+  }
+
+  async cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found"> {
+    const id = encodeURIComponent(saleId);
+    let sale: Json;
+    try {
+      sale = await this.request<Json>("GET", `/sales/${id}`);
+    } catch (e) {
+      if (e instanceof NiveApiError && e.status === 404) return "not_found";
+      throw e;
+    }
+    const status = String(sale.status ?? "");
+    if (status === "DRAFT_CANCELLED" || status === "CANCELLED") return "cancelled";
+    if (status !== "DRAFT") return "not_draft";
+    await this.request("POST", `/sales/${id}/cancel-draft`, { reason: reason.slice(0, 500) });
+    return "cancelled";
   }
 
   async createDraftSale(input: {

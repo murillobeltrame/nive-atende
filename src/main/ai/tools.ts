@@ -32,15 +32,20 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
   },
   reservar_produto: {
     name: "reservar_produto",
-    description: "Reserva (separa) um produto para o cliente. Use só depois de o cliente confirmar produto, variação e quantidade.",
+    description:
+      "Reserva (separa) um produto para o cliente. Use só depois de o cliente confirmar produto, variação, quantidade e, se ele ainda não estiver identificado, o nome completo de quem vai retirar.",
     parameters: {
       type: "object",
       properties: {
         produto_id: { type: "string" },
         variacao_id: { type: "string" },
         quantidade: { type: "integer", minimum: 1 },
+        nome_cliente: {
+          type: "string",
+          description: "Nome completo em que fica a reserva, como o cliente escreveu. Deixe vazio se o cliente já estiver identificado.",
+        },
       },
-      required: ["produto_id", "variacao_id", "quantidade"],
+      required: ["produto_id", "variacao_id", "quantidade", "nome_cliente"],
       additionalProperties: false,
     },
   },
@@ -98,6 +103,8 @@ export interface ToolContext {
     quantity: number;
     unitPrice: number;
     customer: { id: string; name: string } | null;
+    /** Nome informado pelo cliente (quando não identificado). */
+    customerName: string | null;
   }) => Promise<Reservation>;
 }
 
@@ -123,6 +130,17 @@ function dateBR(iso: string | null): string | null {
   if (!iso) return null;
   const [y, m, d] = iso.slice(0, 10).split("-");
   return y && m && d ? `${d}/${m}/${y}` : null;
+}
+
+/** Nome de pessoa informado na conversa: só letras, espaços e sinais comuns de nome. */
+export function cleanPersonName(raw: string): string | null {
+  const s = raw
+    .replace(/[^\p{L}\s'.-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  if (s.replace(/[^\p{L}]/gu, "").length < 3) return null;
+  return s.replace(/\p{L}+/gu, (w) => (w === w.toUpperCase() || w === w.toLowerCase() ? w[0]!.toUpperCase() + w.slice(1).toLowerCase() : w)).replace(/\b(D[aeo]s?|E)\b/g, (m) => m.toLowerCase());
 }
 
 function str(v: unknown): string {
@@ -226,6 +244,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         quantity,
         unitPrice: product.priceCash,
         customer: verified ? { id: verified.id, name: verified.name } : null,
+        customerName: verified ? null : cleanPersonName(str(args.nome_cliente)),
       });
       addMoney(state, product.priceCash, product.priceCash * quantity);
       const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

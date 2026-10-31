@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.2.7 — 2026-10-31
+
+- Reserva em nome do cliente: a IA pergunta o nome completo quando o cliente não está identificado. O sistema procura esse nome no cadastro da Nive e, se não encontrar, cadastra o cliente novo (nome e telefone do WhatsApp) ao lançar o rascunho.
+- A aprovação mostra em nome de quem é a reserva e avisa quando vai cadastrar um cliente novo ("Aprovar, cadastrar cliente e lançar rascunho"). Com vários clientes de mesmo nome, nada é vinculado nem cadastrado.
+- Reserva vencida: se a venda não foi finalizada até o fim da validade, o rascunho é cancelado no ERP (as peças voltam ao estoque). Venda já finalizada nunca é mexida. Pode ser desligado em Configurações → Reserva.
+- Pedido não aprovado dentro da validade vence e não pode mais ser aprovado.
+- Mensagem de confirmação da reserva com o nome do produto legível e o nome do cliente.
+
 ## v0.2.6 — 2026-10-31
 
 - O cliente vê "digitando…" no WhatsApp enquanto a IA busca as informações e prepara a resposta (renovado a cada 8 s até enviar).

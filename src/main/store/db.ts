@@ -13,6 +13,7 @@ import type {
   MessageStatus,
   Reservation,
   ReservationStatus,
+  ReservationCustomerStatus,
   SystemEventType,
   UsageBucket,
 } from "../../shared/types";
@@ -166,6 +167,12 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  private migrate(): void {
+    const cols = (this.db.prepare("PRAGMA table_info(reservations)").all() as Row[]).map((c) => str(c.name));
+    if (!cols.includes("customer_status")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_status TEXT NOT NULL DEFAULT 'none'");
   }
 
   close(): void {
@@ -448,6 +455,7 @@ export class Store {
       saleId: strOrNull(r.sale_id),
       orderNumber: numOrNull(r.order_number),
       status: str(r.status) as ReservationStatus,
+      customerStatus: (strOrNull(r.customer_status) ?? "none") as ReservationCustomerStatus,
       expiresAt: num(r.expires_at),
       createdAt: num(r.created_at),
       error: strOrNull(r.error),
@@ -459,13 +467,13 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO reservations(id, conversation_id, customer_id, customer_name, phone, product_id, variant_id,
-          product_description, variant_label, quantity, unit_price, sale_id, order_number, status, expires_at, created_at, error)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          product_description, variant_label, quantity, unit_price, sale_id, order_number, status, expires_at, created_at, error, customer_status)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id, r.conversationId, r.customerId, r.customerName, r.phone, r.productId, r.variantId,
         r.productDescription, r.variantLabel, r.quantity, r.unitPrice, r.saleId, r.orderNumber,
-        r.status, r.expiresAt, Date.now(), r.error,
+        r.status, r.expiresAt, Date.now(), r.error, r.customerStatus,
       );
     return this.getReservation(id)!;
   }
@@ -480,7 +488,12 @@ export class Store {
     return r ? strOrNull(r.customer_id) : null;
   }
 
-  updateReservation(id: string, patch: { status?: ReservationStatus; saleId?: string | null; orderNumber?: number | null; error?: string | null }): Reservation {
+  updateReservation(
+    id: string,
+    patch: { status?: ReservationStatus; saleId?: string | null; orderNumber?: number | null; error?: string | null; customerId?: string | null; customerStatus?: ReservationCustomerStatus },
+  ): Reservation {
+    if (patch.customerId !== undefined) this.db.prepare("UPDATE reservations SET customer_id = ? WHERE id = ?").run(patch.customerId, id);
+    if (patch.customerStatus !== undefined) this.db.prepare("UPDATE reservations SET customer_status = ? WHERE id = ?").run(patch.customerStatus, id);
     if (patch.status !== undefined) this.db.prepare("UPDATE reservations SET status = ? WHERE id = ?").run(patch.status, id);
     if (patch.saleId !== undefined) this.db.prepare("UPDATE reservations SET sale_id = ? WHERE id = ?").run(patch.saleId, id);
     if (patch.orderNumber !== undefined) this.db.prepare("UPDATE reservations SET order_number = ? WHERE id = ?").run(patch.orderNumber, id);
@@ -492,6 +505,13 @@ export class Store {
     return (this.db.prepare("SELECT * FROM reservations ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map((r) =>
       this.toReservation(r),
     );
+  }
+
+  /** Reservas vencidas que ainda estão ativas (rascunho criado ou aguardando aprovação). */
+  listExpiredActiveReservations(now: number): Reservation[] {
+    return (
+      this.db.prepare("SELECT * FROM reservations WHERE status IN ('created','pending_approval') AND expires_at <= ? ORDER BY expires_at").all(now) as Row[]
+    ).map((r) => this.toReservation(r));
   }
 
   countPendingReservations(): number {

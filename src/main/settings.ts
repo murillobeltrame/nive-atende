@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ignoredNumbers: [],
     catchUpWindowMinutes: 120,
   },
-  reservation: { autoEnabled: false, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false },
+  reservation: { autoEnabled: false, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true },
   accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
   personality: { storeName: "", tone: "proximo", emojis: true, signature: "", presentAsAssistant: false, context: "" },
   ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40 },

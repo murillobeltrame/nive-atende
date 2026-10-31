@@ -87,6 +87,27 @@ export class FakeNive implements NiveApi {
   async getProduct(id: string): Promise<NiveProduct | null> {
     return PRODUCTS.find((p) => p.id === id) ?? null;
   }
+  namedCustomers: NiveCustomer[] = [];
+  createdCustomers: Array<{ name: string; phone: string | null }> = [];
+  saleStatus: Record<string, string> = {};
+  cancelled: string[] = [];
+  async findCustomersByName(name: string): Promise<NiveCustomer[]> {
+    const { normalizeName } = await import("../src/main/nive/client");
+    return [...CUSTOMERS, ...this.namedCustomers].filter((c) => normalizeName(c.name) === normalizeName(name));
+  }
+  async createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer> {
+    this.createdCustomers.push(input);
+    const c = { id: `new-${this.createdCustomers.length}`, name: input.name, nickname: null, taxId: null, phone: input.phone, birthDate: null };
+    this.namedCustomers.push(c);
+    return c;
+  }
+  async cancelDraftSale(saleId: string): Promise<"cancelled" | "not_draft" | "not_found"> {
+    const st = this.saleStatus[saleId] ?? "DRAFT";
+    if (st !== "DRAFT") return "not_draft";
+    this.cancelled.push(saleId);
+    this.saleStatus[saleId] = "DRAFT_CANCELLED";
+    return "cancelled";
+  }
   async createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }) {
     if (this.failDraft) throw new Error("erro ERP");
     this.drafts.push(input);

@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import type { Reservation, ReservationStatus } from "../../../shared/types";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
+import { approveLabel, customerInfo } from "../lib/reservation";
 
 const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
   pending_approval: { label: "Aguardando aprovação", cls: "tag-warn" },
   created: { label: "Rascunho criado", cls: "tag-ok" },
   failed: { label: "Falhou", cls: "tag-fail" },
   rejected: { label: "Recusada", cls: "tag-ignored" },
+  expired: { label: "Vencida", cls: "tag-ignored" },
+  completed: { label: "Venda finalizada", cls: "tag-ok" },
 };
 
 function dt(ts: number) {
@@ -51,7 +54,8 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
         <h1 className="page-title">Reservas</h1>
         <p className="page-sub">
           Produtos que clientes pediram para separar pelo WhatsApp. Cada reserva aprovada vira uma venda em rascunho no
-          sistema Nive.
+          sistema Nive. Se a venda não for finalizada até o fim da validade, o rascunho é cancelado e as peças voltam ao
+          estoque.
         </p>
         {error && (
           <div className="callout danger" role="alert" style={{ marginBottom: 12 }}>
@@ -80,6 +84,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                   <tr key={r.id}>
                     <td>
                       <div>{r.customerName}</div>
+                      {customerInfo(r) && <div className={`sub cust-${customerInfo(r)!.tone}`}>{customerInfo(r)!.text}</div>}
                       <div className="sub">pedido em {dt(r.createdAt)}</div>
                     </td>
                     <td>
@@ -122,7 +127,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                               disabled={busy === r.id}
                               onClick={() => act(r.id, api.approveReservation)}
                             >
-                              {r.status === "failed" ? "Tentar de novo" : "Aprovar"}
+                              {approveLabel(r)}
                             </button>
                           </>
                         )}

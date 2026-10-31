@@ -1781,3 +1781,15 @@ td .sub {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
 }
+
+/* vínculo da reserva com o cadastro */
+.cust-ok {
+  color: var(--green-text, #1f7a4d);
+}
+.cust-warn {
+  color: var(--amber-text, #9a5b00);
+  font-weight: 600;
+}
+.cust-muted {
+  color: var(--muted);
+}

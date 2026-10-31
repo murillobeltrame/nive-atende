@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { approveLabel, customerInfo } from "../lib/reservation";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
 import { listTime, money } from "../lib/format";
@@ -83,11 +84,12 @@ export function PendingPage({ onOpenConversation }: Props) {
                 <span className="tag tag-warn">RESERVA</span>
                 <div className="grow">
                   <div className="title">
-                    {r.customerName} · {r.quantity}× {r.productDescription} {r.variantLabel}
+                    {r.quantity}× {r.productDescription} {r.variantLabel !== "Único" ? r.variantLabel : ""} · em nome de <b>{r.customerName}</b>
                   </div>
                   <div className="desc">
                     {money(r.unitPrice * r.quantity)} · pedido às {listTime(r.createdAt)}
                   </div>
+                  {customerInfo(r) && <div className={`desc cust-${customerInfo(r)!.tone}`}>{customerInfo(r)!.text}</div>}
                 </div>
                 <div className="btn-row">
                   <button className="btn sm" onClick={() => onOpenConversation(r.conversationId)}>
@@ -97,7 +99,7 @@ export function PendingPage({ onOpenConversation }: Props) {
                     Recusar
                   </button>
                   <button className="btn sm primary" disabled={busy === r.id} onClick={() => act(r.id, api.approveReservation)}>
-                    Aprovar e lançar rascunho
+                    {approveLabel(r)}
                   </button>
                 </div>
               </div>

@@ -561,6 +561,10 @@ void app.whenReady().then(async () => {
   monitor.start();
   // pausas expiradas e retomada periódica
   setInterval(() => engine.sweepExpiredPauses(), 60_000);
+  // reservas vencidas: cancela o rascunho no ERP se a venda não foi finalizada
+  const sweepReservations = () => void engine.sweepExpiredReservations().catch((e) => log("app", "warn", "falha ao verificar reservas vencidas", e));
+  setTimeout(sweepReservations, 30_000);
+  setInterval(sweepReservations, 5 * 60_000);
   // impede que o sistema suspenda o app (não o PC) enquanto ele está aberto
   powerSaveBlocker.start("prevent-app-suspension");
 });

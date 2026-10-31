@@ -1,7 +1,7 @@
 // Motor de atendimento: recebe eventos do WhatsApp, decide quando a IA responde e grava quem respondeu.
 import { EventEmitter } from "node:events";
-import { toWhatsApp } from "../ai/format";
-import type { AppSettings, ChatMessage, Conversation, Reservation, SystemEventType } from "../../shared/types";
+import { prettyName, toWhatsApp } from "../ai/format";
+import type { AppSettings, ChatMessage, Conversation, Reservation, ReservationCustomerStatus, SystemEventType } from "../../shared/types";
 import type { Store } from "../store/db";
 import type { NiveApi, NiveProduct } from "../nive/client";
 import type { WhatsAppGateway } from "../evolution/client";
@@ -13,7 +13,7 @@ import type { Transcoder } from "../audio/transcode";
 import { IdentityService } from "./identity";
 import { extractMoneyValues, formatBRL, guardText } from "./guard";
 import { localDay } from "../store/db";
-import { digitsOnly, registeredToJid, samePhone } from "./phone";
+import { callerNational, digitsOnly, registeredToJid, samePhone } from "./phone";
 
 export interface EngineDeps {
   store: Store;
@@ -74,6 +74,21 @@ const MAX_TOOL_ROUNDS = 7;
 /** Limite de texto do histórico enviado à IA (mantém o custo previsível). */
 const HISTORY_CHAR_BUDGET = 16000;
 const OUT_OF_HOURS_NOTICE_INTERVAL_MS = 12 * 60 * 60 * 1000;
+
+function customerNote(r: Reservation): string {
+  switch (r.customerStatus) {
+    case "new":
+      return " (cliente novo: será cadastrado ao aprovar)";
+    case "found_by_name":
+      return " (cliente encontrado no cadastro)";
+    case "identified":
+      return " (cliente identificado)";
+    case "ambiguous":
+      return " (há mais de um cliente com esse nome: o rascunho sai sem cliente vinculado)";
+    default:
+      return "";
+  }
+}
 
 function preview(m: { kind: string; text: string | null; transcript?: string | null }): string {
   if (m.kind === "audio") return m.transcript ? `Áudio: ${m.transcript}` : "Áudio";
@@ -827,18 +842,52 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   // ======================================================================== reservas
+  /** Descobre a quem a reserva pertence no cadastro (sem cadastrar nada ainda). */
+  private async resolveReservationCustomer(
+    customer: { id: string; name: string } | null,
+    name: string | null,
+    phone: string,
+  ): Promise<{ customerId: string | null; customerName: string | null; customerStatus: ReservationCustomerStatus }> {
+    if (customer) return { customerId: customer.id, customerName: customer.name, customerStatus: "identified" };
+    if (!name) return { customerId: null, customerName: null, customerStatus: "none" };
+    try {
+      const found = await this.deps.nive.findCustomersByName(name);
+      if (found.length === 1) return { customerId: found[0]!.id, customerName: found[0]!.name, customerStatus: "found_by_name" };
+      if (found.length > 1) {
+        // vários com o mesmo nome: só vincula se o telefone da conversa bater com um deles
+        const byPhone = found.filter((c) => samePhone(c.phone, phone));
+        if (byPhone.length === 1) return { customerId: byPhone[0]!.id, customerName: byPhone[0]!.name, customerStatus: "found_by_name" };
+        return { customerId: null, customerName: name, customerStatus: "ambiguous" };
+      }
+      return { customerId: null, customerName: name, customerStatus: "new" };
+    } catch {
+      // sem conexão com a Nive agora: decide de novo ao lançar o rascunho
+      return { customerId: null, customerName: name, customerStatus: "new" };
+    }
+  }
+
   private async createReservation(
     conversationId: string,
-    input: { product: NiveProduct; variantId: string; variantLabel: string; quantity: number; unitPrice: number; customer: { id: string; name: string } | null },
+    input: {
+      product: NiveProduct;
+      variantId: string;
+      variantLabel: string;
+      quantity: number;
+      unitPrice: number;
+      customer: { id: string; name: string } | null;
+      customerName: string | null;
+    },
   ): Promise<Reservation> {
     const store = this.deps.store;
     const s = this.s;
     const conv = store.getConversation(conversationId)!;
     const expiresAt = this.now() + s.reservation.validityHours * 3_600_000;
+    const who = await this.resolveReservationCustomer(input.customer, input.customerName, conv.phone);
     let r = store.insertReservation({
       conversationId,
-      customerId: input.customer?.id ?? null,
-      customerName: input.customer?.name ?? conv.customerName ?? conv.displayName,
+      customerId: who.customerId,
+      customerName: who.customerName ?? conv.customerName ?? conv.displayName,
+      customerStatus: who.customerStatus,
       phone: conv.phone,
       productId: input.product.id,
       variantId: input.variantId,
@@ -852,22 +901,46 @@ export class Engine extends EventEmitter<EngineEvents> {
       expiresAt,
       error: null,
     });
+    const item = `${r.quantity}× ${prettyName(r.productDescription)}`;
     if (s.reservation.autoEnabled) {
       r = await this.pushReservationToErp(r);
       if (r.status === "created") {
-        this.addSystemEvent(conversationId, "reservation_created", `Reserva criada como rascunho${r.orderNumber ? ` · pedido #${r.orderNumber}` : ""}`);
-        this.emit("notify", { kind: "reservation_created", title: "Nova reserva pelo WhatsApp", body: `${r.quantity}× ${r.productDescription} · ${r.customerName}`, conversationId });
+        this.addSystemEvent(
+          conversationId,
+          "reservation_created",
+          `Reserva criada como rascunho${r.orderNumber ? ` · pedido #${r.orderNumber}` : ""} · ${r.customerName}${r.customerStatus === "created_new" ? " (cliente cadastrado agora)" : ""}`,
+        );
+        this.emit("notify", { kind: "reservation_created", title: "Nova reserva pelo WhatsApp", body: `${item} · ${r.customerName}`, conversationId });
       }
     } else {
-      this.addSystemEvent(conversationId, "reservation_pending", `Pedido de reserva aguardando sua aprovação: ${r.quantity}× ${r.productDescription}`);
-      this.emit("notify", { kind: "reservation_pending", title: "Reserva aguardando aprovação", body: `${r.quantity}× ${r.productDescription} · ${r.customerName}`, conversationId });
+      this.addSystemEvent(conversationId, "reservation_pending", `Pedido de reserva aguardando sua aprovação: ${item} · em nome de ${r.customerName}${customerNote(r)}`);
+      this.emit("notify", { kind: "reservation_pending", title: "Reserva aguardando aprovação", body: `${item} · ${r.customerName}`, conversationId });
     }
     this.emit("reservation", r);
     return r;
   }
 
-  private async pushReservationToErp(r: Reservation): Promise<Reservation> {
+  /** Garante o cliente no ERP (cadastra se for novo) antes de lançar o rascunho. */
+  private async ensureReservationCustomer(r: Reservation): Promise<Reservation> {
     const store = this.deps.store;
+    if (r.customerStatus !== "new" || store.getReservationCustomerId(r.id)) return r;
+    // procura de novo (pode ter sido cadastrado entre o pedido e a aprovação, ou numa tentativa anterior)
+    const found = await this.deps.nive.findCustomersByName(r.customerName);
+    if (found.length === 1) return store.updateReservation(r.id, { customerId: found[0]!.id, customerStatus: "found_by_name" });
+    if (found.length > 1) return store.updateReservation(r.id, { customerStatus: "ambiguous" });
+    const created = await this.deps.nive.createCustomer({ name: r.customerName, phone: callerNational(r.phone) });
+    store.audit(r.phone, created.id, "cadastro_cliente", "cliente cadastrado pela reserva do WhatsApp");
+    return store.updateReservation(r.id, { customerId: created.id, customerStatus: "created_new" });
+  }
+
+  private async pushReservationToErp(reservation: Reservation): Promise<Reservation> {
+    const store = this.deps.store;
+    let r = reservation;
+    try {
+      r = await this.ensureReservationCustomer(r);
+    } catch (e) {
+      return store.updateReservation(r.id, { status: "failed", error: `Não foi possível cadastrar o cliente: ${(e as Error).message}`.slice(0, 200) });
+    }
     const validade = new Date(r.expiresAt).toLocaleString("pt-BR");
     try {
       const sale = await this.deps.nive.createDraftSale({
@@ -887,14 +960,24 @@ export class Engine extends EventEmitter<EngineEvents> {
     let r = store.getReservation(id);
     if (!r) throw new Error("Reserva não encontrada");
     if (r.status !== "pending_approval" && r.status !== "failed") return r;
+    if (r.expiresAt <= this.now()) {
+      r = store.updateReservation(r.id, { status: "expired" });
+      this.emit("reservation", r);
+      throw new Error("Essa reserva já venceu. Peça para o cliente confirmar de novo.");
+    }
     r = await this.pushReservationToErp(r);
     this.emit("reservation", r);
     if (r.status === "created") {
-      this.addSystemEvent(r.conversationId, "reservation_created", `Reserva aprovada e criada como rascunho${r.orderNumber ? ` · pedido #${r.orderNumber}` : ""}`);
+      this.addSystemEvent(
+        r.conversationId,
+        "reservation_created",
+        `Reserva aprovada e criada como rascunho${r.orderNumber ? ` · pedido #${r.orderNumber}` : ""} · ${r.customerName}${r.customerStatus === "created_new" ? " (cliente cadastrado agora)" : ""}`,
+      );
       const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" });
+      const variant = r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : "";
       await this.sendAiText(
         r.conversationId,
-        `Separado! ${r.quantity > 1 ? `${r.quantity} unidades de ` : ""}${r.productDescription}${r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : ""} fica reservado até ${validade}.`,
+        `Separado! ✅ ${r.quantity > 1 ? `${r.quantity} unidades de ` : ""}*${prettyName(r.productDescription)}*${variant} fica reservado em nome de ${r.customerName} até ${validade}.`,
         { countsAsAiReply: false },
       ).catch(() => undefined);
     }
@@ -907,6 +990,34 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.emit("reservation", r);
     this.handoff(r.conversationId, "reserva recusada — avise o cliente");
     return r;
+  }
+
+  /**
+   * Reservas vencidas: pedido não aprovado expira; rascunho que não virou venda é cancelado no ERP
+   * (as peças voltam para a loja). Venda já finalizada não é tocada.
+   */
+  async sweepExpiredReservations(): Promise<void> {
+    const store = this.deps.store;
+    for (const r of store.listExpiredActiveReservations(this.now())) {
+      if (r.status === "pending_approval" || !r.saleId) {
+        this.emit("reservation", store.updateReservation(r.id, { status: "expired" }));
+        continue;
+      }
+      if (!this.s.reservation.cancelExpiredDrafts) continue;
+      try {
+        const out = await this.deps.nive.cancelDraftSale(r.saleId, `Reserva pelo WhatsApp venceu sem finalizar a venda (Nive Atende)`);
+        const order = r.orderNumber ? ` #${r.orderNumber}` : "";
+        if (out === "not_draft") {
+          this.emit("reservation", store.updateReservation(r.id, { status: "completed" }));
+        } else {
+          this.emit("reservation", store.updateReservation(r.id, { status: "expired" }));
+          if (out === "cancelled")
+            this.addSystemEvent(r.conversationId, "reservation_expired", `Reserva venceu: rascunho${order} cancelado no sistema e ${r.quantity}× ${prettyName(r.productDescription)} voltou ao estoque`);
+        }
+      } catch {
+        // ERP fora do ar: tenta de novo na próxima verificação
+      }
+    }
   }
 
   // ======================================================================== modo restrito

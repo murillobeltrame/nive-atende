@@ -765,6 +765,16 @@ function ReservationSection({ settings, onSettings }: Pick<Props, "settings" | "
             onChange={(v) => setD({ ...d, requireCustomer: v })}
             hint="Se o número não estiver no cadastro, a reserva fica para você aprovar."
           />
+          <Check
+            label="Cancelar o rascunho quando a reserva vencer"
+            checked={d.cancelExpiredDrafts ?? true}
+            onChange={(v) => setD({ ...d, cancelExpiredDrafts: v })}
+            hint="Se a venda não for finalizada até o fim da validade, o rascunho é cancelado no sistema Nive e as peças voltam ao estoque. Venda já finalizada nunca é mexida."
+          />
+          <p className="card-sub" style={{ margin: 0 }}>
+            Quando o cliente não está identificado, a IA pergunta em nome de quem fica a reserva. O sistema procura esse
+            nome no cadastro e, se não encontrar, cadastra o cliente novo (nome e telefone) ao lançar o rascunho.
+          </p>
         </div>
       </div>
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ reservation: d }))} />
