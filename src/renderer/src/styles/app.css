@@ -1678,3 +1678,40 @@ td .sub {
     width: 170px;
   }
 }
+
+/* campo de chave com botão de mostrar/esconder */
+.secret-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.secret-input .input {
+  padding-right: 44px;
+}
+.secret-eye {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.secret-eye:hover:not(:disabled) {
+  color: var(--ink, #17201C);
+}
+.secret-eye:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.secret-eye:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}

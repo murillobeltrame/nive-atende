@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.2.2 — 31/10/2026
+
+- Corrige chaves que não eram salvas no Mac: se o Chaveiro do sistema falhar, a chave é guardada criptografada num arquivo protegido do app
+- Botão de olho para mostrar/esconder a chave digitada; mostra o final da chave salva para conferência
+- A chave é salva sozinha ao colar ou sair do campo, e o "Testar" salva o que está na tela antes de testar
+- Mensagens claras quando falta a chave ou o slug, erro visível se não for possível salvar, e registro no log
+
 ## v0.2.1 — 31/10/2026
 
 - Corrige o pareamento do WhatsApp ("Verifique sua conexão" no celular): o app passa a usar a versão atual do WhatsApp Web

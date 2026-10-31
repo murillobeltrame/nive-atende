@@ -126,10 +126,11 @@ export type SecondFactor = "birthdate" | "restricted";
 export type NotifyMode = "humano" | "todas" | "nenhuma";
 
 export interface AppSettings {
-  nive: { baseUrl: string; storeSlug: string; hasApiKey: boolean };
-  openai: { model: string; transcribeModel: string; hasApiKey: boolean };
+  /** apiKeyEnd: últimos 4 caracteres da chave salva (para conferência), ou null. */
+  nive: { baseUrl: string; storeSlug: string; hasApiKey: boolean; apiKeyEnd: string | null };
+  openai: { model: string; transcribeModel: string; hasApiKey: boolean; apiKeyEnd: string | null };
   /** mode "embedded" = WhatsApp dentro do app (padrão); "evolution" = servidor Evolution externo. */
-  evolution: { mode: "embedded" | "evolution"; baseUrl: string; instanceName: string; webhookPort: number; hasApiKey: boolean };
+  evolution: { mode: "embedded" | "evolution"; baseUrl: string; instanceName: string; webhookPort: number; hasApiKey: boolean; apiKeyEnd: string | null };
   attendance: {
     autoEnabled: boolean;
     businessHours: { enabled: boolean; days: number[]; start: string; end: string };

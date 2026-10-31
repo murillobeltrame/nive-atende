@@ -10,9 +10,9 @@ export interface SecretBox {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: "", hasApiKey: false },
-  openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: false },
-  evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: false },
+  nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: "", hasApiKey: false, apiKeyEnd: null },
+  openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: false, apiKeyEnd: null },
+  evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: false, apiKeyEnd: null },
   attendance: {
     autoEnabled: false,
     businessHours: { enabled: false, days: [1, 2, 3, 4, 5, 6], start: "08:00", end: "18:00" },
@@ -33,10 +33,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   termsAcceptedAt: null,
 };
 
-const SECRET_FLAGS: Record<SecretKey, (s: AppSettings) => void> = {
-  niveApiKey: (s) => (s.nive.hasApiKey = true),
-  openaiApiKey: (s) => (s.openai.hasApiKey = true),
-  evolutionApiKey: (s) => (s.evolution.hasApiKey = true),
+const SECRET_FLAGS: Record<SecretKey, (s: AppSettings, end: string | null) => void> = {
+  niveApiKey: (s, end) => {
+    s.nive.hasApiKey = true;
+    s.nive.apiKeyEnd = end;
+  },
+  openaiApiKey: (s, end) => {
+    s.openai.hasApiKey = true;
+    s.openai.apiKeyEnd = end;
+  },
+  evolutionApiKey: (s, end) => {
+    s.evolution.hasApiKey = true;
+    s.evolution.apiKeyEnd = end;
+  },
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -70,8 +79,15 @@ export class SettingsService {
     s.nive.hasApiKey = false;
     s.openai.hasApiKey = false;
     s.evolution.hasApiKey = false;
+    s.nive.apiKeyEnd = null;
+    s.openai.apiKeyEnd = null;
+    s.evolution.apiKeyEnd = null;
     for (const key of Object.keys(SECRET_FLAGS) as SecretKey[]) {
-      if (this.store.getSecretBlob(key)) SECRET_FLAGS[key](s);
+      if (!this.store.getSecretBlob(key)) continue;
+      const plain = this.getSecret(key);
+      // chave guardada mas ilegível (ex.: cofre do sistema mudou) conta como não configurada
+      if (!plain) continue;
+      SECRET_FLAGS[key](s, plain.length >= 8 ? plain.slice(-4) : null);
     }
     return s;
   }

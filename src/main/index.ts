@@ -19,6 +19,7 @@ import { Engine } from "./engine/engine";
 import { StatusMonitor } from "./status/monitor";
 import { registeredToJid, digitsOnly } from "./engine/phone";
 import { initLog, log, logDir } from "./log";
+import { createSecretBox } from "./secret-box";
 
 const isDev = Boolean(process.env.NIVE_ATENDE_DEV_URL);
 
@@ -41,11 +42,10 @@ mkdirSync(app.getPath("userData"), { recursive: true });
 initLog(app.getPath("userData"));
 log("app", "info", `Nive Atende ${app.getVersion()} iniciado (${process.platform} ${process.arch}, Electron ${process.versions.electron})`);
 const store = new Store(join(app.getPath("userData"), "nive-atende.sqlite"));
-const settings = new SettingsService(store, {
-  isAvailable: () => safeStorage.isEncryptionAvailable(),
-  encrypt: (plain) => new Uint8Array(safeStorage.encryptString(plain)),
-  decrypt: (data) => safeStorage.decryptString(Buffer.from(data)),
-});
+const settings = new SettingsService(
+  store,
+  createSecretBox(safeStorage, join(app.getPath("userData"), "chave-local.key"), (msg, err) => log("app", "warn", msg, err)),
+);
 
 let webhookToken = store.getKv<string>("webhookToken");
 if (!webhookToken) {
@@ -397,7 +397,14 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     return s;
   },
   setSecret: (key, value) => {
-    const s = settings.setSecret(key, value);
+    let s;
+    try {
+      s = settings.setSecret(key, value);
+      log("app", "info", `chave salva: ${key}`);
+    } catch (e) {
+      log("app", "error", `falha ao salvar a chave ${key}`, e);
+      throw new Error(`Não foi possível salvar a chave: ${(e as Error).message}`);
+    }
     if (key === "evolutionApiKey") void evolutionWa.registerWebhook();
     void monitor.runAll(true);
     return s;
@@ -413,6 +420,9 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     return s;
   },
   testNive: async () => {
+    const s = settings.get();
+    if (!s.nive.storeSlug) return { ok: false, message: "Informe o identificador da loja (slug) e clique em Salvar." };
+    if (!settings.getSecret("niveApiKey")) return { ok: false, message: "Cole a chave de API da Nive no campo acima (ela é salva sozinha) e teste de novo." };
     try {
       await nive.testConnection();
       return { ok: true, message: "Conexão com a API Nive funcionando." };
@@ -421,11 +431,12 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
       return {
         ok: false,
         message:
-          st === 401 ? "Chave inválida ou revogada." : st === 403 ? "A chave não tem permissão (confira o escopo e o plano com acesso à API)." : st === 400 ? "Slug da loja inválido." : (e as Error).message,
+          st === 401 ? `A Nive recusou a chave (${(e as Error).message}). Confira se copiou a chave inteira e se ela não foi revogada no ERP.` : st === 403 ? "A chave não tem permissão (confira o escopo e o plano com acesso à API)." : st === 400 ? "Slug da loja inválido." : (e as Error).message,
       };
     }
   },
   testOpenAI: async () => {
+    if (!settings.getSecret("openaiApiKey")) return { ok: false, message: "Cole a chave da OpenAI no campo acima (ela é salva sozinha) e teste de novo." };
     try {
       const models = await ai.listModels();
       await ai.chat(settings.get().openai.model, [{ role: "user", content: "Responda apenas: ok" }], []);

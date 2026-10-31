@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { AppSettings, SecretKey, TestResult } from "../../../shared/types";
-import { IconCheck, IconExternal, IconX } from "../components/Icons";
+import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
 import { api } from "../lib/api";
 
 export type SettingsSection =
@@ -129,9 +129,16 @@ function Feedback({ r }: { r: TestResult | null }) {
   );
 }
 
+// Chave digitada e ainda não salva: os botões "Testar" esperam este salvamento antes de testar.
+let pendingSecretSave: Promise<void> | null = null;
+export async function flushPendingSecret(): Promise<void> {
+  if (pendingSecretSave) await pendingSecretSave.catch(() => undefined);
+}
+
 function SecretField({
   label,
   configured,
+  ending,
   secretKey,
   placeholder,
   onSettings,
@@ -139,6 +146,8 @@ function SecretField({
 }: {
   label: string;
   configured: boolean;
+  /** Últimos caracteres da chave salva, para conferir sem expor a chave inteira. */
+  ending?: string | null;
   secretKey: SecretKey;
   placeholder: string;
   onSettings: (s: AppSettings) => void;
@@ -146,15 +155,27 @@ function SecretField({
 }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const save = async () => {
-    if (!value.trim()) return;
+  const [visible, setVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (raw = value) => {
+    const v = raw.trim();
+    if (!v) return;
     setBusy(true);
-    try {
-      onSettings(await api.setSecret(secretKey, value.trim()));
-      setValue("");
-    } finally {
-      setBusy(false);
-    }
+    setError(null);
+    const p = (async () => {
+      try {
+        onSettings(await api.setSecret(secretKey, v));
+        setValue("");
+        setVisible(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    })();
+    pendingSecretSave = p;
+    await p;
+    if (pendingSecretSave === p) pendingSecretSave = null;
   };
   return (
     <div className="field">
@@ -163,7 +184,7 @@ function SecretField({
         <span className={`key-state ${configured ? "on" : "off"}`}>
           {configured ? (
             <>
-              <IconCheck size={12} /> configurada
+              <IconCheck size={12} /> configurada{ending ? ` · termina em ${ending}` : ""}
             </>
           ) : (
             "não configurada"
@@ -174,19 +195,42 @@ function SecretField({
         <label className="sr-only" htmlFor={`secret-${secretKey}`}>
           {label}
         </label>
-        <input
-          id={`secret-${secretKey}`}
-          className="input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={configured ? "•••••••• (cole uma nova para trocar)" : placeholder}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void save()}
-        />
-        <button className="btn" onClick={save} disabled={busy || !value.trim()}>
-          Salvar chave
+        <div className="secret-input">
+          <input
+            id={`secret-${secretKey}`}
+            className="input"
+            type={visible ? "text" : "password"}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={configured ? "•••••••• (cole uma nova para trocar)" : placeholder}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void save()}
+            // salva sozinho ao colar ou ao sair do campo: ninguém precisa lembrar de clicar em Salvar
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData("text");
+              if (pasted.trim()) {
+                e.preventDefault();
+                setValue(pasted);
+                void save(pasted);
+              }
+            }}
+            onBlur={() => value.trim() && void save()}
+          />
+          <button
+            type="button"
+            className="secret-eye"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={visible ? "Esconder a chave" : "Mostrar a chave"}
+            aria-pressed={visible}
+            disabled={!value}
+            title={value ? (visible ? "Esconder" : "Mostrar") : "Mostra o que você digitar ou colar"}
+          >
+            {visible ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+          </button>
+        </div>
+        <button className="btn" onClick={() => void save()} disabled={busy || !value.trim()}>
+          {busy ? "Salvando…" : "Salvar chave"}
         </button>
         {configured && (
           <button
@@ -198,7 +242,7 @@ function SecretField({
           </button>
         )}
       </div>
-      {hint && <small>{hint}</small>}
+      {error ? <small style={{ color: "var(--danger-ink, #8A2A12)" }}>{error}</small> : hint && <small>{hint}</small>}
     </div>
   );
 }
@@ -277,6 +321,9 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
   const test = async (which: "nive" | "evo") => {
     setTesting(which);
     try {
+      await flushPendingSecret();
+      // testa com o que está na tela: salva antes o endereço/slug digitados
+      if (!same(d, initial)) onSettings(await api.saveSettings(d));
       if (which === "nive") setNiveTest(await api.testNive());
       else setEvoTest(await api.testEvolution());
     } catch (e) {
@@ -315,6 +362,7 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
             label="Chave de API da Nive"
             secretKey="niveApiKey"
             configured={settings.nive.hasApiKey}
+            ending={settings.nive.apiKeyEnd}
             placeholder="sl_live_..."
             onSettings={onSettings}
             hint="A chave fica criptografada neste computador."
@@ -374,6 +422,7 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
                 label="Chave do servidor (apikey)"
                 secretKey="evolutionApiKey"
                 configured={settings.evolution.hasApiKey}
+                ending={settings.evolution.apiKeyEnd}
                 placeholder="a mesma AUTHENTICATION_API_KEY da Evolution"
                 onSettings={onSettings}
               />
@@ -410,6 +459,7 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
   const test = async () => {
     setTesting(true);
     try {
+      await flushPendingSecret();
       const res = await api.testOpenAI();
       setR(res);
       if (res.models?.length) setModels(res.models);
@@ -493,6 +543,7 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
             label="Chave da OpenAI"
             secretKey="openaiApiKey"
             configured={settings.openai.hasApiKey}
+            ending={settings.openai.apiKeyEnd}
             placeholder="sk-..."
             onSettings={onSettings}
             hint="A chave fica criptografada neste computador e nunca é enviada para a Nive."
