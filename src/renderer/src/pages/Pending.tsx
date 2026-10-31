@@ -3,7 +3,7 @@ import { approveLabel, customerInfo } from "../lib/reservation";
 import { prettyName } from "../../../shared/format";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
-import { listTime, money } from "../lib/format";
+import { contactName, listTime, money } from "../lib/format";
 
 interface Props {
   onOpenConversation: (id: string) => void;
@@ -63,7 +63,7 @@ export function PendingPage({ onOpenConversation }: Props) {
               <div className="pending-item" key={c.id}>
                 <span className="tag tag-need">PRECISA DE VOCÊ</span>
                 <div className="grow">
-                  <div className="title">{c.displayName}</div>
+                  <div className="title">{contactName(c.displayName)}</div>
                   <div className="desc">
                     {c.handoffReason ?? "A IA passou para humano"} · “{c.lastPreview}” · {listTime(c.lastMessageAt)}
                   </div>

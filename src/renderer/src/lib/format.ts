@@ -37,6 +37,24 @@ export function listTime(ts: number): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+/** Telefone completo e legível: +55 (48) 92002-5980. */
+export function formatPhone(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  if (d.length < 8) return phone;
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) {
+    const ddd = d.slice(2, 4);
+    const n = d.slice(4);
+    return `+55 (${ddd}) ${n.slice(0, n.length - 4)}-${n.slice(-4)}`;
+  }
+  if (d.length === 10 || d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+  return `+${d}`;
+}
+
+/** Nome para mostrar: se o contato não tem nome (só número), mostra o telefone formatado. */
+export function contactName(name: string): string {
+  return /^\+?\d[\d\s-]{7,}$/.test(name.trim()) ? formatPhone(name) : name;
+}
+
 export function maskPhone(phone: string): string {
   const d = phone.replace(/\D/g, "");
   if (d.length < 8) return phone;

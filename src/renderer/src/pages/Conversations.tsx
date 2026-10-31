@@ -5,7 +5,7 @@ import { IconCheck, IconSearch, IconShield, IconSpark, IconUser } from "../compo
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
-import { auxLine, avatarColors, initials, listTime, maskPhone, previewPrefix, usd } from "../lib/format";
+import { auxLine, avatarColors, contactName, formatPhone, initials, listTime, previewPrefix, usd } from "../lib/format";
 
 interface Props {
   filter: ConversationFilter;
@@ -19,11 +19,36 @@ interface Props {
   whatsappOk: boolean;
 }
 
-function Avatar({ name, seed, small }: { name: string; seed: string; small?: boolean }) {
+const avatarCache = new Map<string, string | null>();
+
+/** Foto de perfil pública do contato; sem foto, as iniciais. */
+function Avatar({ name, seed, small, conversationId }: { name: string; seed: string; small?: boolean; conversationId?: string }) {
   const [bg, fg] = avatarColors(seed);
+  const [photo, setPhoto] = useState<string | null>(conversationId ? (avatarCache.get(conversationId) ?? null) : null);
+  useEffect(() => {
+    if (!conversationId) return;
+    if (avatarCache.has(conversationId)) {
+      setPhoto(avatarCache.get(conversationId) ?? null);
+      return;
+    }
+    let alive = true;
+    void api
+      .getAvatar(conversationId)
+      .then((url) => {
+        avatarCache.set(conversationId, url);
+        if (alive) setPhoto(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [conversationId]);
+  if (photo)
+    return <img className={`avatar avatar-photo ${small ? "sm" : ""}`} src={photo} alt="" aria-hidden="true" onError={() => setPhoto(null)} />;
+  const isNumber = /^\+?[\d\s()-]+$/.test(name.trim());
   return (
     <div className={`avatar ${small ? "sm" : ""}`} style={{ background: bg, color: fg }} aria-hidden="true">
-      {initials(name)}
+      {isNumber ? <IconUser size={small ? 18 : 20} /> : initials(name)}
     </div>
   );
 }
@@ -120,7 +145,7 @@ function ClientPanel({ c }: { c: Conversation }) {
     <aside className="client-panel" aria-label="Dados do cliente">
       <div className="stack" style={{ gap: 6 }}>
         <span className="panel-label">Cliente</span>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{c.customerName ?? c.displayName}</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{c.customerName ?? contactName(c.displayName)}</span>
         {c.verifiedBy ? (
           <span className="verified">
             <IconShield size={15} />
@@ -129,7 +154,7 @@ function ClientPanel({ c }: { c: Conversation }) {
         ) : (
           <span className="unverified">Não identificado no cadastro</span>
         )}
-        <span style={{ color: "var(--muted)" }}>{maskPhone(c.phone)}</span>
+        <span style={{ color: "var(--muted)" }}>{formatPhone(c.phone)}</span>
       </div>
       <div className="panel-sep" />
       <div className="stack" style={{ gap: 9 }}>
@@ -225,14 +250,14 @@ function ChatView({ conversation }: { conversation: Conversation }) {
 
   let lastDay = "";
   return (
-    <section className="chat" aria-label={`Conversa com ${conversation.displayName}`}>
+    <section className="chat" aria-label={`Conversa com ${contactName(conversation.displayName)}`}>
       <header className="chat-head">
         <div className="chat-head-id">
-          <Avatar name={conversation.displayName} seed={conversation.displayName} small />
+          <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
           <div style={{ minWidth: 0 }}>
-            <div className="chat-head-name">{conversation.displayName}</div>
+            <div className="chat-head-name">{contactName(conversation.displayName)}</div>
             <div className="chat-head-sub">
-              {maskPhone(conversation.phone)} · {ident}
+              {formatPhone(conversation.phone)} · {ident}
             </div>
           </div>
         </div>
@@ -417,10 +442,10 @@ export function ConversationsPage({
                   aria-current={selectedId === c.id ? "true" : undefined}
                   onClick={() => onSelect(c.id)}
                 >
-                  <Avatar name={c.displayName} seed={c.displayName} />
+                  <Avatar name={c.displayName} seed={c.displayName} conversationId={c.id} />
                   <div className="conv-body">
                     <div className="conv-row">
-                      <span className="conv-name">{c.displayName}</span>
+                      <span className="conv-name">{contactName(c.displayName)}</span>
                       <span className={`conv-time ${hot ? "hot" : ""}`}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div className="conv-preview">

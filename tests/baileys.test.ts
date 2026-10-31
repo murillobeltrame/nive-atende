@@ -187,3 +187,19 @@ describe("WhatsApp embutido (Baileys)", () => {
     await expect(t.svc.pairingCode("99992210")).rejects.toThrow(/DDI e DDD/);
   });
 });
+
+describe("foto de perfil", () => {
+  it("devolve a URL quando pública e null quando privada", async () => {
+    const t = setup();
+    void t.svc.connect();
+    await tick();
+    const sock = t.sockets[0]! as unknown as { ev: EventEmitter; profilePictureUrl: (jid: string) => Promise<string> };
+    sock.ev.emit("connection.update", { connection: "open" });
+    sock.profilePictureUrl = async (jid) => {
+      if (jid.startsWith("5548")) return "https://pps.whatsapp.net/foto.jpg";
+      throw new Error("item-not-found");
+    };
+    expect(await t.svc.getProfilePictureUrl("5548999992210@s.whatsapp.net")).toBe("https://pps.whatsapp.net/foto.jpg");
+    expect(await t.svc.getProfilePictureUrl("5511999992210@s.whatsapp.net")).toBeNull();
+  });
+});

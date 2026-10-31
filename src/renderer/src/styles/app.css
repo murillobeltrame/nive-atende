@@ -1848,3 +1848,7 @@ td .sub {
   font-size: 12px;
   color: var(--muted);
 }
+.avatar-photo {
+  object-fit: cover;
+  padding: 0;
+}

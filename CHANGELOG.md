@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.2.14 — 2026-10-31
+
+- Foto de perfil do contato nas conversas, quando ele deixa a foto pública no WhatsApp (guardada por 24 h).
+- Telefone completo e legível no lugar do número oculto: "+55 (48) 92002-5980". Contato sem nome aparece com o telefone formatado.
+
 ## v0.2.13 — 2026-10-31
 
 - Foto + resposta numa mensagem só: quando a IA manda uma foto, a resposta vai como legenda da imagem (como no WhatsApp), em vez de foto com o nome do produto e depois outra mensagem.

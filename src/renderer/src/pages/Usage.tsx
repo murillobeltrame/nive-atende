@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AuditEntry, UsageSummary } from "../../../shared/types";
 import { api } from "../lib/api";
-import { maskPhone, usd } from "../lib/format";
+import { formatPhone, usd } from "../lib/format";
 
 // Nomes gravados pelo processo principal (src/main/engine/identity.ts e src/main/ai/tools.ts).
 const ACTION_LABEL: Record<string, string> = {
@@ -134,7 +134,7 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
                 {audit.map((a) => (
                   <tr key={a.id}>
                     <td>{new Date(a.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
-                    <td>{maskPhone(a.phone)}</td>
+                    <td>{formatPhone(a.phone)}</td>
                     <td>{ACTION_LABEL[a.action] ?? a.action}</td>
                     <td>{a.result}</td>
                   </tr>

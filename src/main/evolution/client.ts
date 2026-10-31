@@ -24,6 +24,8 @@ export interface WhatsAppGateway {
   getMediaBase64(waMessageId: string, remoteJid: string, fromMe: boolean): Promise<{ base64: string; mimetype: string } | null>;
   /** Apaga para todos uma mensagem enviada por este número. */
   deleteForEveryone(jid: string, waMessageId: string): Promise<void>;
+  /** URL da foto de perfil, quando o contato deixa pública (senão null). */
+  getProfilePictureUrl?(jid: string): Promise<string | null>;
 }
 
 type Json = Record<string, unknown>;
@@ -170,6 +172,16 @@ export class EvolutionClient implements WhatsAppGateway {
 
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void> {
     await this.request("POST", `/chat/sendPresence/${this.instance}`, { number: jid, presence, delay: delayMs }).catch(() => undefined);
+  }
+
+  async getProfilePictureUrl(jid: string): Promise<string | null> {
+    try {
+      const data = await this.request<Json>("POST", `/chat/fetchProfilePictureUrl/${this.instance}`, { number: jid }, 10000);
+      const url = data?.profilePictureUrl;
+      return typeof url === "string" && /^https:\/\//.test(url) ? url : null;
+    } catch {
+      return null;
+    }
   }
 
   async deleteForEveryone(jid: string, waMessageId: string): Promise<void> {

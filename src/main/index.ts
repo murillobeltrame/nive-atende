@@ -118,6 +118,35 @@ const engine = new Engine({
   transcode: createFfmpegTranscoder(),
   blockedReason: () => monitor.blockedReason(),
 });
+/** Foto de perfil: baixada e guardada por 24 h (sem foto pública: tenta de novo em 12 h). */
+const avatarInFlight = new Map<string, Promise<string | null>>();
+async function getAvatar(conversationId: string): Promise<string | null> {
+  const cached = store.getKv<{ at: number; data: string | null }>(`avatar:${conversationId}`);
+  const ttl = cached?.data ? 24 * 3_600_000 : 12 * 3_600_000;
+  if (cached && Date.now() - cached.at < ttl) return cached.data;
+  const running = avatarInFlight.get(conversationId);
+  if (running) return running;
+  const job = (async () => {
+    let data: string | null = null;
+    try {
+      const url = await wa().getProfilePictureUrl?.(conversationId);
+      if (url) {
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        const mime = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0]!;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (res.ok && mime.startsWith("image/") && buf.length < 2 * 1024 * 1024) data = `data:${mime};base64,${buf.toString("base64")}`;
+      }
+    } catch {
+      data = cached?.data ?? null;
+    }
+    // WhatsApp desconectado: não grava "sem foto" para tentar de novo depois
+    if (data || monitor.snapshot().checks.whatsapp.state === "ok") store.setKv(`avatar:${conversationId}`, { at: Date.now(), data });
+    return data;
+  })().finally(() => avatarInFlight.delete(conversationId));
+  avatarInFlight.set(conversationId, job);
+  return job;
+}
+
 let lastReservationSync = 0;
 function syncReservations(): void {
   if (Date.now() - lastReservationSync < 20_000) return;
@@ -516,6 +545,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   sendAudio: (id, base64, mime) => engine.sendHumanAudio(id, base64, mime, settings.get().app.operatorName),
   resendSticker: (id, messageId) => engine.resendSticker(id, messageId, settings.get().app.operatorName),
   deleteMessage: (messageId) => engine.deleteMessage(messageId),
+  getAvatar: (conversationId) => getAvatar(conversationId),
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),

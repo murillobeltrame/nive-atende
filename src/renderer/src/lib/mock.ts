@@ -611,6 +611,9 @@ export function createMockApi(): NiveAtendeApi {
     async resendSticker(conversationId) {
       return sendHuman(conversationId, { kind: "sticker", hasMedia: true, mediaMime: "image/webp" });
     },
+    async getAvatar() {
+      return null;
+    },
     async deleteMessage(messageId) {
       const m = messages.find((x) => x.id === messageId);
       if (!m) throw new Error("Mensagem não encontrada");

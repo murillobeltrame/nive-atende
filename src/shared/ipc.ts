@@ -51,6 +51,8 @@ export interface NiveAtendeApi {
   getConversation(id: string): Promise<Conversation | null>;
   getMessages(conversationId: string): Promise<ChatMessage[]>;
   getMedia(messageId: string): Promise<string | null>; // data URL
+  /** Foto de perfil do contato (data URL), quando ele deixa pública. */
+  getAvatar(conversationId: string): Promise<string | null>;
   markRead(conversationId: string): Promise<void>;
   sendText(conversationId: string, text: string): Promise<ChatMessage>;
   sendMedia(conversationId: string, media: OutgoingMedia): Promise<ChatMessage>;
@@ -120,6 +122,7 @@ export const RPC_METHODS = [
   "getConversation",
   "getMessages",
   "getMedia",
+  "getAvatar",
   "markRead",
   "sendText",
   "sendMedia",

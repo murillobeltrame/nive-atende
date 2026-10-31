@@ -440,6 +440,16 @@ export class BaileysService implements WhatsAppService {
     }
   }
 
+  async getProfilePictureUrl(jid: string): Promise<string | null> {
+    if (!this.sock || this.state !== "open") return null;
+    try {
+      const url = await this.sock.profilePictureUrl(jid, "image", 10000);
+      return url ?? null;
+    } catch {
+      return null; // foto privada ou sem foto
+    }
+  }
+
   async deleteForEveryone(jid: string, waMessageId: string): Promise<void> {
     await this.requireSock().sendMessage(jid, { delete: { remoteJid: jid, fromMe: true, id: waMessageId } } as never);
   }
