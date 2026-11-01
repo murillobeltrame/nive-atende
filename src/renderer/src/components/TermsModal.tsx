@@ -14,7 +14,7 @@ export function TermsModal({ onAccept }: { onAccept: () => Promise<void> }) {
           número. Para reduzir esse risco, o sistema <b>só responde quem chamou</b> e nunca envia mensagens em massa.
         </li>
         <li>
-          O custo da inteligência artificial é <b>seu</b>: é cobrado direto pela OpenAI, na chave e nos créditos que
+          O custo da inteligência artificial é <b>seu</b>: é cobrado direto pela plataforma de IA escolhida (OpenAI, Anthropic ou Google), na chave e nos créditos que
           você cadastrar.
         </li>
         <li>

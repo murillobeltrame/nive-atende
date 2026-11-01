@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
+import { aiConfigured } from "../../../shared/ai-catalog";
 import { Composer } from "../components/Composer";
 import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconUser, IconX } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
@@ -83,9 +84,9 @@ function SetupChecklist({
       label: "Configurar",
     },
     {
-      done: settings.openai.hasApiKey,
+      done: aiConfigured(settings),
       title: "Configurar a inteligência artificial",
-      desc: "Crie uma conta na OpenAI, adicione créditos e cole a chave. O passo a passo está na tela.",
+      desc: "Escolha a plataforma (OpenAI, Claude ou Gemini), adicione créditos e cole a chave. O passo a passo está na tela.",
       action: () => onOpenSettings("ia"),
       label: "Ver passo a passo",
     },
@@ -511,7 +512,7 @@ export function ConversationsPage({
 
   const needsSetup =
     settings &&
-    (!settings.nive.hasApiKey || !settings.openai.hasApiKey || (settings.evolution.mode === "evolution" && !settings.evolution.hasApiKey) || !whatsappOk);
+    (!settings.nive.hasApiKey || !aiConfigured(settings) || (settings.evolution.mode === "evolution" && !settings.evolution.hasApiKey) || !whatsappOk);
 
   const chips: Array<{ f: ConversationFilter; label: string; cls?: string }> = [
     { f: "todas", label: "Todas" },

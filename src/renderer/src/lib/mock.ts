@@ -106,7 +106,9 @@ export function createMockApi(): NiveAtendeApi {
 
   let settings: AppSettings = {
     nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: setup ? "" : "loja-exemplo", hasApiKey: !setup, apiKeyEnd: setup ? null : "9f2a" },
-    openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: !setup, apiKeyEnd: setup ? null : "9f2a" },
+    openai: { model: "gpt-6-luna", transcribeModel: "gpt-transcribe", hasApiKey: !setup, apiKeyEnd: setup ? null : "9f2a" },
+    anthropic: { model: "claude-haiku-5-5", hasApiKey: false, apiKeyEnd: null },
+    gemini: { model: "gemini-3.8-flash", transcribeModel: "gemini-3.5-flash-lite", hasApiKey: false, apiKeyEnd: null },
     evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: !setup, apiKeyEnd: setup ? null : "9f2a" },
     attendance: {
       autoEnabled: true,
@@ -133,7 +135,7 @@ export function createMockApi(): NiveAtendeApi {
       presentAsAssistant: false,
       context: "",
     },
-    ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
+    ai: { provider: "openai", monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
     audio: { transcribe: true, maxSeconds: 120 },
     app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "Murillo", dailySummary: true, dailySummaryHour: 19 },
     termsAcceptedAt: params.get("terms") === "0" ? null : now - 86_400_000,
@@ -507,12 +509,16 @@ export function createMockApi(): NiveAtendeApi {
       await delay(200);
       if (key === "niveApiKey") settings.nive.hasApiKey = true;
       if (key === "openaiApiKey") settings.openai.hasApiKey = true;
+      if (key === "anthropicApiKey") settings.anthropic.hasApiKey = true;
+      if (key === "geminiApiKey") settings.gemini.hasApiKey = true;
       if (key === "evolutionApiKey") settings.evolution.hasApiKey = true;
       return structuredClone(settings);
     },
     async clearSecret(key) {
       if (key === "niveApiKey") settings.nive.hasApiKey = false;
       if (key === "openaiApiKey") settings.openai.hasApiKey = false;
+      if (key === "anthropicApiKey") settings.anthropic.hasApiKey = false;
+      if (key === "geminiApiKey") settings.gemini.hasApiKey = false;
       if (key === "evolutionApiKey") settings.evolution.hasApiKey = false;
       return structuredClone(settings);
     },
@@ -531,6 +537,16 @@ export function createMockApi(): NiveAtendeApi {
       return settings.openai.hasApiKey
         ? { ok: true, message: "Chave válida.", models: ["gpt-5-mini", "gpt-5", "gpt-5-nano", "gpt-4.1-mini"] }
         : { ok: false, message: "Informe a chave da OpenAI (começa com sk-)." };
+    },
+    async testAi(provider) {
+      await delay(600);
+      const k = provider === "openai" ? settings.openai : provider === "anthropic" ? settings.anthropic : settings.gemini;
+      const models = {
+        openai: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra", "gpt-5-mini"],
+        anthropic: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+        gemini: ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-4-argon"],
+      }[provider];
+      return k.hasApiKey ? { ok: true, provider, message: "Chave válida.", models } : { ok: false, provider, message: "Cole a chave e teste de novo." };
     },
     async testEvolution() {
       await delay(600);

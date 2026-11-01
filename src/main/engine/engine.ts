@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { prettyName, toWhatsApp } from "../ai/format";
 import { classifyTopic } from "../ai/topic";
 import { messageText } from "../ai/openai";
+import { activeModel, transcribeModelFor } from "../../shared/ai-catalog";
 import { normalizeName } from "../nive/client";
 
 /** Palavras comuns em nomes de produto que não identificam um item. */
@@ -764,8 +765,8 @@ export class Engine extends EventEmitter<EngineEvents> {
   private async checkTopic(conversationId: string): Promise<{ store: boolean; reason: string } | null> {
     this.setActivity(conversationId, "Analisando a mensagem…");
     try {
-      const v = await classifyTopic(this.deps.ai, this.s.openai.model, this.buildHistory(conversationId));
-      const cost = estimateChatCost(this.s.openai.model, v.inputTokens, v.outputTokens);
+      const v = await classifyTopic(this.deps.ai, activeModel(this.s), this.buildHistory(conversationId));
+      const cost = estimateChatCost(activeModel(this.s), v.inputTokens, v.outputTokens);
       this.deps.store.addUsage(this.now(), { inputTokens: v.inputTokens, outputTokens: v.outputTokens, costUsd: cost });
       const c = this.deps.store.getConversation(conversationId)!;
       this.deps.store.updateConversation(conversationId, { costUsd: c.costUsd + cost });
@@ -820,7 +821,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       }
       if (!media) return false;
       const mp3 = await this.deps.transcode(media.data);
-      const text = await this.deps.ai.transcribe(this.s.openai.transcribeModel, mp3, "audio.mp3");
+      const text = await this.deps.ai.transcribe(transcribeModelFor(this.s), mp3, "audio.mp3");
       const seconds = m.durationSec ?? 30;
       const cost = estimateTranscriptionCost(seconds);
       store.addUsage(this.now(), { transcriptionSeconds: seconds, costUsd: cost });
@@ -905,14 +906,14 @@ export class Engine extends EventEmitter<EngineEvents> {
     let reply: string | null = null;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const res = await this.deps.ai.chat(s.openai.model, messages, tools);
+      const res = await this.deps.ai.chat(activeModel(s), messages, tools);
       inTok += res.inputTokens;
       outTok += res.outputTokens;
       if (!res.toolCalls.length) {
         reply = res.content ? toWhatsApp(res.content) || null : null;
         break;
       }
-      messages.push({ role: "assistant", content: res.content, tool_calls: res.toolCalls });
+      messages.push({ role: "assistant", content: res.content, tool_calls: res.toolCalls, ...(res.raw !== undefined ? { raw: res.raw } : {}) });
       for (const call of res.toolCalls) {
         let output: unknown;
         try {
@@ -940,7 +941,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
 
     if (reply && !readOnly) this.rememberOffered(conversationId, reply, state);
-    const cost = estimateChatCost(s.openai.model, inTok, outTok);
+    const cost = estimateChatCost(activeModel(s), inTok, outTok);
     store.addUsage(this.now(), { inputTokens: inTok, outputTokens: outTok, costUsd: cost });
     const c = store.getConversation(conversationId)!;
     store.updateConversation(conversationId, { costUsd: c.costUsd + cost });

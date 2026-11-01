@@ -1,5 +1,6 @@
 // Contrato de IPC: a interface só fala com o processo principal por esta API (window.niveAtende).
 import type {
+  AiProviderId,
   AppInfo,
   AppSettings,
   AuditEntry,
@@ -33,6 +34,8 @@ export interface NiveAtendeApi {
   acceptTerms(): Promise<AppSettings>;
   testNive(): Promise<TestResult>;
   testOpenAI(): Promise<TestResult>;
+  /** Testa a chave de uma plataforma de IA (OpenAI, Anthropic ou Gemini) e devolve os modelos da conta. */
+  testAi(provider: AiProviderId, model?: string): Promise<TestResult>;
   testEvolution(): Promise<TestResult>;
 
   // status
@@ -126,6 +129,7 @@ export const RPC_METHODS = [
   "acceptTerms",
   "testNive",
   "testOpenAI",
+  "testAi",
   "testEvolution",
   "getStatus",
   "refreshStatus",

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { AppSettings, SecretKey, TestResult } from "../../../shared/types";
+import type { AiProviderId, AppSettings, SecretKey, TestResult } from "../../../shared/types";
+import { PROVIDER_IDS, PROVIDERS, TIER_LABEL, TIER_ORDER, type CatalogModel } from "../../../shared/ai-catalog";
 import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
 import { api } from "../lib/api";
 
@@ -452,104 +453,338 @@ function ConnectionsSection({ settings, onSettings, onConnectWhatsapp }: Omit<Pr
   );
 }
 
-function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
-  const initial = settings.openai;
-  const [d, setD] = useDraft(initial);
-  const [r, setR] = useState<TestResult | null>(null);
-  const [models, setModels] = useState<string[]>([]);
-  const [testing, setTesting] = useState(false);
-  const aiInit = settings.ai;
-  const [ai, setAi] = useDraft(aiInit);
+const SECRET_OF: Record<AiProviderId, SecretKey> = { openai: "openaiApiKey", anthropic: "anthropicApiKey", gemini: "geminiApiKey" };
+const OTHER_MODEL = "__outro__";
 
-  const test = async () => {
-    setTesting(true);
-    try {
-      await flushPendingSecret();
-      const res = await api.testOpenAI();
-      setR(res);
-      if (res.models?.length) setModels(res.models);
-    } catch (e) {
-      setR({ ok: false, message: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setTesting(false);
-    }
-  };
+/** Custo aproximado de 1.000 respostas (≈3.000 tokens lidos e 300 escritos por resposta). */
+function costPer1000(m: CatalogModel): string {
+  const usd = ((3000 * m.inUsd + 300 * m.outUsd) / 1_000_000) * 1000;
+  return usd < 1 ? `US$ ${usd.toFixed(2).replace(".", ",")}` : `US$ ${usd.toFixed(usd < 10 ? 1 : 0).replace(".", ",")}`;
+}
 
-  const modelOptions = Array.from(new Set([d.model, ...models].filter(Boolean)));
+function priceLabel(m: CatalogModel): string {
+  const n = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: v < 1 ? 2 : 0, maximumFractionDigits: 2 });
+  return `US$ ${n(m.inUsd)} / ${n(m.outUsd)}`;
+}
 
-  return (
-    <>
+function ProviderGuide({ provider }: { provider: AiProviderId }) {
+  if (provider === "anthropic")
+    return (
       <div className="card">
-        <h2 className="card-title">Como criar sua chave da OpenAI e colocar créditos</h2>
-        <p className="card-sub">
-          A IA é da OpenAI (a mesma empresa do ChatGPT). Você paga direto para ela, só o que usar. Leva uns 5 minutos.
-        </p>
+        <h2 className="card-title">Como criar sua chave da Anthropic (Claude) e colocar créditos</h2>
+        <p className="card-sub">A Anthropic é a empresa do Claude. Você paga direto para ela, só o que usar.</p>
         <ol className="guide">
           <li>
             <div>
-              <b>Crie uma conta</b> em <Ext href="https://platform.openai.com">platform.openai.com</Ext>. Pode usar o
-              mesmo login do ChatGPT.
+              <b>Crie uma conta</b> em <Ext href="https://platform.claude.com">platform.claude.com</Ext>.
               <div className="callout" style={{ marginTop: 8 }}>
-                Atenção: a assinatura do <b>ChatGPT Plus não inclui créditos para programas</b>. São cobranças
-                separadas.
+                A assinatura do <b>Claude Pro/Max não inclui créditos para programas</b>. São cobranças separadas.
               </div>
             </div>
           </li>
           <li>
             <div>
-              <b>Cadastre um cartão.</b> Abra{" "}
-              <Ext href="https://platform.openai.com/settings/organization/billing/overview">
-                Settings › Billing (Configurações › Cobrança)
-              </Ext>{" "}
-              e clique em <b>Add payment details</b>.
+              <b>Coloque créditos</b> em <Ext href="https://platform.claude.com/settings/billing">Settings › Billing</Ext>{" "}
+              (o mínimo costuma ser US$ 5). Deixe a recarga automática desligada para só gastar o que colocou.
             </div>
           </li>
           <li>
             <div>
-              <b>Coloque créditos.</b> Na mesma página, clique em <b>Add to credit balance</b> e escolha o valor (o
-              mínimo costuma ser US$ 5). Recomendamos o modo <b>pré-pago</b> e <b>desligar a recarga automática</b>:
-              assim você só gasta o que colocou.
+              <b>Crie a chave</b> em <Ext href="https://platform.claude.com/settings/keys">API keys</Ext>, clique em{" "}
+              <b>Create Key</b> e dê o nome <b>Nive Atende</b>. Ela começa com <code>sk-ant-</code> e só aparece uma vez.
             </div>
           </li>
           <li>
             <div>
-              <b>Crie a chave.</b> Abra <Ext href="https://platform.openai.com/api-keys">API keys</Ext>, clique em{" "}
-              <b>Create new secret key</b> e dê o nome <b>Nive Atende</b>.
+              <b>Cole a chave abaixo</b> e clique em <b>Testar</b>.
+            </div>
+          </li>
+        </ol>
+        <div className="callout info" style={{ marginTop: 14 }}>
+          O Claude <b>não transcreve áudio</b>. Para a IA entender os áudios dos clientes, cadastre também uma chave da
+          OpenAI ou do Gemini (só para os áudios; as respostas continuam pelo Claude).
+        </div>
+      </div>
+    );
+  if (provider === "gemini")
+    return (
+      <div className="card">
+        <h2 className="card-title">Como criar sua chave do Google Gemini</h2>
+        <p className="card-sub">O Gemini é a IA do Google. Dá para começar na cota grátis e depois ativar o faturamento.</p>
+        <ol className="guide">
+          <li>
+            <div>
+              <b>Entre</b> em <Ext href="https://aistudio.google.com">aistudio.google.com</Ext> com uma conta Google.
             </div>
           </li>
           <li>
             <div>
-              <b>Copie a chave</b> (começa com <code>sk-</code>). Ela <b>só aparece uma vez</b>. Se perder, é só criar
-              outra.
+              <b>Crie a chave</b> em <Ext href="https://aistudio.google.com/apikey">Get API key</Ext> ›{" "}
+              <b>Create API key</b>. Ela começa com <code>AIza</code>.
             </div>
           </li>
           <li>
             <div>
-              <b>Cole a chave abaixo</b> e clique em <b>Testar</b>. Se der erro de saldo, confira se o crédito foi
-              adicionado.
+              <b>Cole a chave abaixo</b> e clique em <b>Testar</b>.
             </div>
           </li>
           <li>
             <div>
-              <b>Acompanhe o gasto</b> em <Ext href="https://platform.openai.com/settings/organization/usage">Usage</Ext>{" "}
-              no site da OpenAI, ou na tela <b>Consumo</b> deste programa.
+              <b>Para atender de verdade, ative o faturamento</b> (Billing) no projeto da chave. A cota grátis tem limite
+              de mensagens por minuto e por dia; quando acaba, a IA para até o dia seguinte.
             </div>
           </li>
         </ol>
         <p className="card-sub" style={{ marginTop: 14, marginBottom: 0 }}>
-          Os nomes dos menus no site da OpenAI podem mudar com o tempo. Se não encontrar algum, procure por “Billing” e
-          “API keys”.
+          Na cota grátis o Google pode usar as conversas para melhorar os produtos dele. Com o faturamento ativo, não.
         </p>
       </div>
+    );
+  return (
+    <div className="card">
+      <h2 className="card-title">Como criar sua chave da OpenAI e colocar créditos</h2>
+      <p className="card-sub">
+        A OpenAI é a empresa do ChatGPT. Você paga direto para ela, só o que usar. Leva uns 5 minutos.
+      </p>
+      <ol className="guide">
+        <li>
+          <div>
+            <b>Crie uma conta</b> em <Ext href="https://platform.openai.com">platform.openai.com</Ext>. Pode usar o
+            mesmo login do ChatGPT.
+            <div className="callout" style={{ marginTop: 8 }}>
+              Atenção: a assinatura do <b>ChatGPT Plus não inclui créditos para programas</b>. São cobranças separadas.
+            </div>
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Cadastre um cartão.</b> Abra{" "}
+            <Ext href="https://platform.openai.com/settings/organization/billing/overview">
+              Settings › Billing (Configurações › Cobrança)
+            </Ext>{" "}
+            e clique em <b>Add payment details</b>.
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Coloque créditos.</b> Na mesma página, clique em <b>Add to credit balance</b> e escolha o valor (o mínimo
+            costuma ser US$ 5). Recomendamos o modo <b>pré-pago</b> e <b>desligar a recarga automática</b>: assim você só
+            gasta o que colocou.
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Crie a chave.</b> Abra <Ext href="https://platform.openai.com/api-keys">API keys</Ext>, clique em{" "}
+            <b>Create new secret key</b> e dê o nome <b>Nive Atende</b>.
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Copie a chave</b> (começa com <code>sk-</code>). Ela <b>só aparece uma vez</b>. Se perder, é só criar outra.
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Cole a chave abaixo</b> e clique em <b>Testar</b>. Se der erro de saldo, confira se o crédito foi adicionado.
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Acompanhe o gasto</b> em <Ext href="https://platform.openai.com/settings/organization/usage">Usage</Ext> no
+            site da OpenAI, ou na tela <b>Consumo</b> deste programa.
+          </div>
+        </li>
+      </ol>
+      <p className="card-sub" style={{ marginTop: 14, marginBottom: 0 }}>
+        Os nomes dos menus no site da OpenAI podem mudar com o tempo. Se não encontrar algum, procure por “Billing” e “API
+        keys”.
+      </p>
+    </div>
+  );
+}
+
+/** Lista de modelos agrupada por categoria, com os da conta do lojista que não estão no catálogo. */
+function ModelPicker({
+  provider,
+  value,
+  accountModels,
+  onChange,
+}: {
+  provider: AiProviderId;
+  value: string;
+  accountModels: string[];
+  onChange: (v: string) => void;
+}) {
+  const info = PROVIDERS[provider];
+  const known = new Set(info.models.map((m) => m.id));
+  const extra = accountModels.filter((id) => !known.has(id));
+  const inList = known.has(value) || extra.includes(value);
+  const [custom, setCustom] = useState(!inList && value !== "");
+  const selected = info.models.find((m) => m.id === value) ?? null;
+  const account = new Set(accountModels);
+
+  return (
+    <label className="field">
+      <span>Modelo das respostas</span>
+      <select
+        className="select"
+        value={custom ? OTHER_MODEL : value}
+        onChange={(e) => {
+          if (e.target.value === OTHER_MODEL) setCustom(true);
+          else {
+            setCustom(false);
+            onChange(e.target.value);
+          }
+        }}
+      >
+        {TIER_ORDER.map((tier) => {
+          const list = info.models.filter((m) => m.tier === tier);
+          if (!list.length) return null;
+          return (
+            <optgroup key={tier} label={TIER_LABEL[tier]}>
+              {list.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label} · {priceLabel(m)}
+                  {m.recommended ? " · recomendado" : ""}
+                  {accountModels.length && !account.has(m.id) ? " · não aparece na sua conta" : ""}
+                </option>
+              ))}
+            </optgroup>
+          );
+        })}
+        {extra.length > 0 && (
+          <optgroup label="Outros modelos da sua conta">
+            {extra.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <option value={OTHER_MODEL}>Outro (digitar o nome do modelo)…</option>
+      </select>
+      {custom && (
+        <input
+          className="input"
+          style={{ marginTop: 6 }}
+          placeholder={`ex.: ${info.defaultModel}`}
+          value={value}
+          spellCheck={false}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+      <small>
+        {selected ? (
+          <>
+            {selected.note} Preço por 1 milhão de tokens (lidos / escritos): {priceLabel(selected)}. Mil respostas custam
+            perto de {costPer1000(selected)}.
+          </>
+        ) : (
+          <>Modelo fora da lista: o consumo é estimado por aproximação.</>
+        )}{" "}
+        Clique em Testar para conferir os modelos liberados na sua conta.
+      </small>
+    </label>
+  );
+}
+
+function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
+  const initial = {
+    provider: settings.ai.provider ?? "openai",
+    openai: { model: settings.openai.model, transcribeModel: settings.openai.transcribeModel },
+    anthropic: { model: settings.anthropic.model },
+    gemini: { model: settings.gemini.model, transcribeModel: settings.gemini.transcribeModel },
+  };
+  const [d, setD] = useDraft(initial);
+  const { provider: _provider, ...aiInit } = settings.ai;
+  const [ai, setAi] = useDraft(aiInit);
+  const [results, setResults] = useState<Partial<Record<AiProviderId, TestResult>>>({});
+  const [models, setModels] = useState<Partial<Record<AiProviderId, string[]>>>({});
+  const [testing, setTesting] = useState(false);
+
+  const p = d.provider;
+  const info = PROVIDERS[p];
+  const keyOf = (id: AiProviderId) => (id === "openai" ? settings.openai : id === "anthropic" ? settings.anthropic : settings.gemini);
+  const model = d[p].model;
+  const setModel = (v: string) => setD({ ...d, [p]: { ...d[p], model: v } });
+
+  // quem vai transcrever os áudios com a escolha atual (o Claude não transcreve)
+  const transcriber: AiProviderId | null = info.transcribes
+    ? p
+    : settings.openai.hasApiKey
+      ? "openai"
+      : settings.gemini.hasApiKey
+        ? "gemini"
+        : null;
+
+  const test = async () => {
+    setTesting(true);
+    try {
+      await flushPendingSecret();
+      // testa com o modelo escolhido na tela, mesmo antes de salvar
+      const res = await api.testAi(p, model.trim() || undefined);
+      setResults((r) => ({ ...r, [p]: res }));
+      if (res.models?.length) setModels((m) => ({ ...m, [p]: res.models }));
+    } catch (e) {
+      setResults((r) => ({ ...r, [p]: { ok: false, message: e instanceof Error ? e.message : String(e) } }));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <>
       <div className="card">
-        <h2 className="card-title">Chave e modelo</h2>
+        <h2 className="card-title">Plataforma de IA</h2>
+        <p className="card-sub">
+          Escolha qual empresa responde seus clientes. Cada uma cobra direto de você, na chave e nos créditos que você
+          cadastrar. Dá para trocar quando quiser.
+        </p>
+        <div className="radio-group" role="radiogroup" aria-label="Plataforma de IA">
+          {PROVIDER_IDS.map((id) => {
+            const k = keyOf(id);
+            const rec = PROVIDERS[id].models.find((m) => m.recommended);
+            return (
+              <label key={id}>
+                <input type="radio" name="aiProvider" checked={p === id} onChange={() => setD({ ...d, provider: id })} />
+                <span>
+                  <b>{PROVIDERS[id].name}</b>
+                  {settings.ai.provider === id && " · em uso"}{" "}
+                  <span className={`key-state ${k.hasApiKey ? "on" : "off"}`}>
+                    {k.hasApiKey ? (
+                      <>
+                        <IconCheck size={12} /> chave configurada
+                      </>
+                    ) : (
+                      "sem chave"
+                    )}
+                  </span>
+                  <br />
+                  <small style={{ color: "var(--muted)" }}>
+                    {id === "openai" && "GPT-6 Luna, Terra, Sol e Astra, além das gerações 5 e 4. Entende áudio."}
+                    {id === "anthropic" && "Claude Haiku, Sonnet, Opus e Fable. Não transcreve áudio sozinho."}
+                    {id === "gemini" && "Gemini Flash-Lite, Flash e Argon. Entende áudio e tem cota grátis para testar."}
+                    {rec ? ` Recomendado para atendimento: ${rec.label}.` : ""}
+                  </small>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      <ProviderGuide provider={p} />
+
+      <div className="card">
+        <h2 className="card-title">Chave e modelo · {info.name}</h2>
         <div className="stack">
           <SecretField
-            label="Chave da OpenAI"
-            secretKey="openaiApiKey"
-            configured={settings.openai.hasApiKey}
-            ending={settings.openai.apiKeyEnd}
-            placeholder="sk-..."
+            key={p}
+            label={`Chave da ${info.company}`}
+            secretKey={SECRET_OF[p]}
+            configured={keyOf(p).hasApiKey}
+            ending={keyOf(p).apiKeyEnd}
+            placeholder={info.keyPlaceholder}
             onSettings={onSettings}
             hint="A chave fica criptografada neste computador e nunca é enviada para a Nive."
           />
@@ -557,35 +792,43 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
             <button className="btn" onClick={test} disabled={testing}>
               {testing ? "Testando…" : "Testar"}
             </button>
-            <Feedback r={r} />
+            <Feedback r={results[p] ?? null} />
           </div>
           <div className="grid-2">
-            <label className="field">
-              <span>Modelo das respostas</span>
-              <input
-                className="input"
-                list="model-options"
-                value={d.model}
-                onChange={(e) => setD({ ...d, model: e.target.value })}
+            <ModelPicker key={p} provider={p} value={model} accountModels={models[p] ?? []} onChange={setModel} />
+            {p === "openai" && (
+              <Text
+                label="Modelo de transcrição de áudio"
+                value={d.openai.transcribeModel}
+                onChange={(v) => setD({ ...d, openai: { ...d.openai, transcribeModel: v } })}
+                hint="Usado para entender os áudios dos clientes. Padrão: gpt-transcribe."
               />
-              <datalist id="model-options">
-                {modelOptions.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-              <small>
-                Os modelos “mini” são os mais baratos. Para um atendimento mais esperto (entende melhor o cliente e
-                escolhe melhor os produtos), use um modelo maior, sem “mini” no nome — custa de 3 a 5 vezes mais por
-                mensagem. Clique em Testar para ver os modelos da sua conta.
-              </small>
-            </label>
-            <Text
-              label="Modelo de transcrição de áudio"
-              value={d.transcribeModel}
-              onChange={(v) => setD({ ...d, transcribeModel: v })}
-              hint="Usado para entender os áudios dos clientes."
-            />
+            )}
+            {p === "gemini" && (
+              <Text
+                label="Modelo que transcreve os áudios"
+                value={d.gemini.transcribeModel}
+                onChange={(v) => setD({ ...d, gemini: { ...d.gemini, transcribeModel: v } })}
+                hint="O Gemini ouve o áudio e devolve o texto. O Flash-Lite é o mais barato para isso."
+              />
+            )}
+            {p === "anthropic" && (
+              <div className="field">
+                <span>Áudios dos clientes</span>
+                <div className={`callout ${transcriber ? "info" : ""}`}>
+                  {transcriber
+                    ? `Os áudios serão transcritos pela ${PROVIDERS[transcriber].company}, com a chave que você já cadastrou.`
+                    : "Sem chave da OpenAI ou do Gemini, os áudios não serão entendidos: a conversa passa para você."}
+                </div>
+              </div>
+            )}
           </div>
+          {d.provider !== settings.ai.provider && (
+            <div className="callout">
+              Você escolheu <b>{info.name}</b>. Clique em <b>Salvar</b> para a IA começar a responder por ela.
+              {!keyOf(p).hasApiKey && " Antes, cole a chave acima."}
+            </div>
+          )}
           <div className="grid-2">
             <Num
               label="Alerta de gasto mensal (US$)"
@@ -625,8 +868,10 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
         onSave={async () =>
           onSettings(
             await api.saveSettings({
-              openai: { model: d.model.trim(), transcribeModel: d.transcribeModel.trim() },
-              ai,
+              openai: { model: d.openai.model.trim(), transcribeModel: d.openai.transcribeModel.trim() },
+              anthropic: { model: d.anthropic.model.trim() },
+              gemini: { model: d.gemini.model.trim(), transcribeModel: d.gemini.transcribeModel.trim() },
+              ai: { ...ai, provider: d.provider },
             }),
           )
         }

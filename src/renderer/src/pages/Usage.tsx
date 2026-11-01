@@ -45,8 +45,8 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
       <div className="page-pad">
         <h1 className="page-title">Consumo</h1>
         <p className="page-sub">
-          Quantas respostas a IA deu e quanto isso custou na sua conta da OpenAI. Os valores são estimados neste
-          computador; o valor oficial está no site da OpenAI.
+          Quantas respostas a IA deu e quanto isso custou na sua conta da plataforma de IA. Os valores são estimados neste
+          computador; o valor oficial está no site da plataforma (OpenAI, Anthropic ou Google).
         </p>
         {over && (
           <div className="callout" role="alert" style={{ marginBottom: 16 }}>

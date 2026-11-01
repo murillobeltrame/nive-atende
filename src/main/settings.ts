@@ -2,6 +2,7 @@
 // criptografadas pelo sistema operacional (safeStorage do Electron = DPAPI no Windows, Keychain no Mac).
 import type { AppSettings, DeepPartial, SecretKey } from "../shared/types";
 import type { Store } from "./store/db";
+import { isProviderId } from "../shared/ai-catalog";
 
 export interface SecretBox {
   isAvailable(): boolean;
@@ -11,7 +12,9 @@ export interface SecretBox {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   nive: { baseUrl: "https://api.nivesistemas.com.br", storeSlug: "", hasApiKey: false, apiKeyEnd: null },
-  openai: { model: "gpt-5-mini", transcribeModel: "gpt-transcribe", hasApiKey: false, apiKeyEnd: null },
+  openai: { model: "gpt-6-luna", transcribeModel: "gpt-transcribe", hasApiKey: false, apiKeyEnd: null },
+  anthropic: { model: "claude-haiku-5-5", hasApiKey: false, apiKeyEnd: null },
+  gemini: { model: "gemini-3.8-flash", transcribeModel: "gemini-3.5-flash-lite", hasApiKey: false, apiKeyEnd: null },
   evolution: { mode: "embedded", baseUrl: "http://localhost:8080", instanceName: "nive-atende", webhookPort: 3931, hasApiKey: false, apiKeyEnd: null },
   attendance: {
     autoEnabled: false,
@@ -32,7 +35,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reservation: { autoEnabled: false, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true, reminder: true, reminderHours: 3 },
   accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
   personality: { storeName: "", tone: "proximo", emojis: true, signature: "", presentAsAssistant: false, context: "" },
-  ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
+  ai: { provider: "openai", monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
   audio: { transcribe: true, maxSeconds: 120 },
   app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "", dailySummary: true, dailySummaryHour: 19 },
   termsAcceptedAt: null,
@@ -46,6 +49,14 @@ const SECRET_FLAGS: Record<SecretKey, (s: AppSettings, end: string | null) => vo
   openaiApiKey: (s, end) => {
     s.openai.hasApiKey = true;
     s.openai.apiKeyEnd = end;
+  },
+  anthropicApiKey: (s, end) => {
+    s.anthropic.hasApiKey = true;
+    s.anthropic.apiKeyEnd = end;
+  },
+  geminiApiKey: (s, end) => {
+    s.gemini.hasApiKey = true;
+    s.gemini.apiKeyEnd = end;
   },
   evolutionApiKey: (s, end) => {
     s.evolution.hasApiKey = true;
@@ -83,9 +94,13 @@ export class SettingsService {
     const s = deepMerge(structuredClone(DEFAULT_SETTINGS), saved);
     s.nive.hasApiKey = false;
     s.openai.hasApiKey = false;
+    s.anthropic.hasApiKey = false;
+    s.gemini.hasApiKey = false;
     s.evolution.hasApiKey = false;
     s.nive.apiKeyEnd = null;
     s.openai.apiKeyEnd = null;
+    s.anthropic.apiKeyEnd = null;
+    s.gemini.apiKeyEnd = null;
     s.evolution.apiKeyEnd = null;
     for (const key of Object.keys(SECRET_FLAGS) as SecretKey[]) {
       if (!this.store.getSecretBlob(key)) continue;
@@ -112,11 +127,14 @@ export class SettingsService {
     next.evolution.baseUrl = next.evolution.baseUrl.trim().replace(/\/+$/, "");
     next.nive.storeSlug = next.nive.storeSlug.trim();
     // flags de chave são derivadas, nunca salvas
-    const { nive, openai, evolution, ...rest } = next;
+    if (!isProviderId(next.ai.provider)) next.ai.provider = "openai";
+    const { nive, openai, anthropic, gemini, evolution, ...rest } = next;
     const toSave = {
       ...rest,
       nive: { baseUrl: nive.baseUrl, storeSlug: nive.storeSlug },
-      openai: { model: openai.model, transcribeModel: openai.transcribeModel },
+      openai: { model: openai.model.trim(), transcribeModel: openai.transcribeModel.trim() },
+      anthropic: { model: anthropic.model.trim() },
+      gemini: { model: gemini.model.trim(), transcribeModel: gemini.transcribeModel.trim() },
       evolution: {
         mode: evolution.mode === "evolution" ? "evolution" : "embedded",
         baseUrl: evolution.baseUrl,

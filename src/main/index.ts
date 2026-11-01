@@ -5,13 +5,15 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { EVENTS, type NiveAtendeApi, type RpcMethod } from "../shared/ipc";
-import type { NavigateTarget, QrState, StatusSnapshot, UsageSummary } from "../shared/types";
+import type { AiProviderId, NavigateTarget, QrState, StatusSnapshot, TestResult, UsageSummary } from "../shared/types";
 import { Store, localDay } from "./store/db";
 import { SettingsService } from "./settings";
 import { NiveClient } from "./nive/client";
 import { EvolutionClient, type WhatsAppGateway } from "./evolution/client";
 import type { EvolutionEvent } from "./evolution/parse";
-import { OpenAiProvider, AiError } from "./ai/openai";
+import { AiError } from "./ai/openai";
+import { AiRouter } from "./ai/router";
+import { activeProvider, PROVIDERS, isProviderId } from "../shared/ai-catalog";
 import { createFfmpegTranscoder, createOggOpusTranscoder } from "./audio/transcode";
 import { BaileysService } from "./whatsapp/baileys";
 import { EvolutionService } from "./whatsapp/evolution-service";
@@ -62,7 +64,28 @@ const evolution = new EvolutionClient(() => {
   const s = settings.get();
   return { baseUrl: s.evolution.baseUrl, instanceName: s.evolution.instanceName, apiKey: settings.getSecret("evolutionApiKey") };
 });
-const ai = new OpenAiProvider(() => settings.getSecret("openaiApiKey"));
+const ai = new AiRouter(() => settings.get(), {
+  openai: () => settings.getSecret("openaiApiKey"),
+  anthropic: () => settings.getSecret("anthropicApiKey"),
+  gemini: () => settings.getSecret("geminiApiKey"),
+});
+
+const SECRET_OF = { openai: "openaiApiKey", anthropic: "anthropicApiKey", gemini: "geminiApiKey" } as const;
+
+/** Testa a chave de uma plataforma de IA: lista os modelos da conta e faz uma chamada mínima. */
+async function testAi(provider: AiProviderId, model?: string): Promise<TestResult> {
+  const info = PROVIDERS[provider];
+  if (!settings.getSecret(SECRET_OF[provider]))
+    return { ok: false, provider, message: `Cole a chave da ${info.company} no campo acima (ela é salva sozinha) e teste de novo.` };
+  try {
+    const models = await ai.test(provider, true, model);
+    const active = activeProvider(settings.get()) === provider;
+    if (active) void monitor.runAll(true);
+    return { ok: true, provider, message: `Chave da ${info.company} funcionando e com crédito.`, models };
+  } catch (e) {
+    return { ok: false, provider, message: (e as Error).message };
+  }
+}
 
 /** URL que a Evolution (em Docker) usa para chegar ao app. */
 function webhookUrl(): string {
@@ -106,8 +129,7 @@ const monitor = new StatusMonitor({
   whatsapp: () => wa(),
   nive,
   testOpenAi: async (deep) => {
-    if (deep) await ai.chat(settings.get().openai.model, [{ role: "user", content: "Responda apenas: ok" }], []);
-    else await ai.listModels();
+    await ai.test(activeProvider(settings.get()), deep);
   },
 });
 
@@ -478,6 +500,8 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     if (s.evolution.mode !== activeMode) void applyWhatsappMode();
     else if (activeMode === "evolution" && s.evolution.webhookPort !== prevPort) void evolutionWa.stop().then(() => evolutionWa.start());
     if (patch.app?.launchAtLogin !== undefined) applyLoginItem();
+    // trocou de plataforma de IA: confere a chave nova já
+    if (patch.ai?.provider !== undefined) void monitor.runAll(true);
     monitor.publish();
     return s;
   },
@@ -520,16 +544,8 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
       };
     }
   },
-  testOpenAI: async () => {
-    if (!settings.getSecret("openaiApiKey")) return { ok: false, message: "Cole a chave da OpenAI no campo acima (ela é salva sozinha) e teste de novo." };
-    try {
-      const models = await ai.listModels();
-      await ai.chat(settings.get().openai.model, [{ role: "user", content: "Responda apenas: ok" }], []);
-      return { ok: true, message: "Chave da OpenAI funcionando e com crédito.", models };
-    } catch (e) {
-      return { ok: false, message: (e as Error).message };
-    }
-  },
+  testOpenAI: () => testAi("openai"),
+  testAi: (provider, model) => testAi(isProviderId(provider) ? provider : activeProvider(settings.get()), typeof model === "string" ? model : undefined),
   testEvolution: () => wa().test(),
   getStatus: () => monitor.snapshot(),
   refreshStatus: () => monitor.runAll(true),

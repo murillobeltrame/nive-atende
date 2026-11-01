@@ -6,6 +6,7 @@ import type { ConnectionState } from "../evolution/client";
 import type { WhatsAppService } from "../whatsapp/service";
 import type { NiveApi } from "../nive/client";
 import type { AiError } from "../ai/openai";
+import { activeProvider, aiConfigured, PROVIDERS } from "../../shared/ai-catalog";
 import type { Store } from "../store/db";
 import { localDay } from "../store/db";
 
@@ -117,8 +118,8 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
 
   private async checkOpenAi(): Promise<void> {
     const s = this.deps.settings();
-    if (!s.openai.hasApiKey) {
-      this.set("openai", "error", "Chave da OpenAI não configurada");
+    if (!aiConfigured(s)) {
+      this.set("openai", "error", `Chave da ${PROVIDERS[activeProvider(s)].company} não configurada`);
       return;
     }
     try {
@@ -144,9 +145,10 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
 
   /** Erros da IA vistos durante o atendimento atualizam o status na hora. */
   reportAiError(e: AiError, publish = true): void {
-    if (e.kind === "no_credit") this.set("openai", "error", "Seus créditos da OpenAI acabaram");
-    else if (e.kind === "invalid_key") this.set("openai", "error", "Chave da OpenAI inválida");
-    else if (e.kind === "rate_limit") this.set("openai", "warn", "Limite de uso da OpenAI atingido; tentando de novo");
+    const company = PROVIDERS[activeProvider(this.deps.settings())].company;
+    if (e.kind === "no_credit") this.set("openai", "error", `Seus créditos da ${company} acabaram`);
+    else if (e.kind === "invalid_key") this.set("openai", "error", `Chave da ${company} inválida`);
+    else if (e.kind === "rate_limit") this.set("openai", "warn", `Limite de uso da ${company} atingido; tentando de novo`);
     else this.set("openai", "warn", e.message);
     if (publish) this.publish();
   }

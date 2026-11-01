@@ -2,7 +2,7 @@
 
 Atendente automático de WhatsApp para lojistas Nive, instalado no computador da loja.
 Responde o consumidor como se fosse o lojista, consultando o ERP da Nive pela API pública,
-com IA paga pela chave OpenAI do próprio lojista. Nada roda no servidor de produção da Nive.
+com IA paga pela chave do próprio lojista (OpenAI, Anthropic/Claude ou Google/Gemini, à escolha). Nada roda no servidor de produção da Nive.
 
 > **Status:** MVP funcional (v0.1.0). Testado com testes automatizados. O próximo passo é rodar
 > em uma loja piloto. "Nive Atende" ainda é um nome provisório.
@@ -16,7 +16,7 @@ com IA paga pela chave OpenAI do próprio lojista. Nada roda no servidor de prod
 - **Contas do cliente:** informa quanto ele tem para pagar, as parcelas, os vencimentos e os itens
   comprados. Só mostra os dados do próprio cliente, que é identificado pelo número do cadastro ou
   por CPF + segundo fator.
-- **Áudio:** transcreve o áudio do cliente (ffmpeg + OpenAI) e responde por texto.
+- **Áudio:** transcreve o áudio do cliente (ffmpeg + OpenAI ou Gemini) e responde por texto.
 - **Passa para humano:** desconto, troca, reclamação, valor não confirmado e tudo o que estiver
   fora do escopo.
 - **Interface:**
@@ -34,7 +34,7 @@ com IA paga pela chave OpenAI do próprio lojista. Nada roda no servidor de prod
 - Nada mais para o WhatsApp: ele roda **dentro do app** (motor Baileys, o mesmo da Evolution).
   O Docker só é necessário se você escolher usar um servidor Evolution externo.
 - Uma chave da API Nive (plano com acesso à API, escopo `integration`) e o slug da loja
-- Uma chave da OpenAI com créditos (o app mostra o passo a passo em Ajustes > Inteligência artificial)
+- Uma chave com créditos da OpenAI, da Anthropic (Claude) ou do Google (Gemini) (o app mostra o passo a passo em Ajustes > Inteligência artificial)
 
 ## Rodando em desenvolvimento
 
@@ -57,7 +57,7 @@ Parâmetros úteis: `?status=error`, `?terms=0`, `?setup=1`, `?page=ajustes&sect
 2. Em **Ajustes > Conexões**:
    - **API Nive:** informe o slug da loja e cole a chave (criada no ERP em Integração via API), depois clique em **Testar**.
    - **WhatsApp:** deixe marcado **Dentro do programa**, clique em **Conectar WhatsApp** e leia o QR Code com o celular da loja (WhatsApp > Aparelhos conectados > Conectar aparelho). Depois disso o app reconecta sozinho sempre que abrir.
-3. Em **Ajustes > Inteligência artificial**, cole a chave da OpenAI e clique em **Testar**.
+3. Em **Ajustes > Inteligência artificial**, escolha a plataforma, cole a chave e clique em **Testar**.
 4. Ligue o **Atendimento automático** na barra do topo.
 
 ## Comandos
@@ -124,7 +124,7 @@ src/
     nive/        cliente da API Nive
     whatsapp/    WhatsApp embutido (Baileys) e modo servidor Evolution externo
     evolution/   cliente REST da Evolution, webhook local e leitura das mensagens do WhatsApp
-    ai/          OpenAI (chat com ferramentas + transcrição), instruções e ferramentas
+    ai/          OpenAI, Anthropic e Gemini (chat com ferramentas + transcrição), roteador, instruções e ferramentas
     engine/      motor de atendimento, identificação, proteção de CPF, telefones
     audio/       conversão OGG -> MP3 com ffmpeg
     status/      monitor de status (verde/amarelo/vermelho)
@@ -143,7 +143,7 @@ docs/            plano técnico e esboços
   - ou o cliente informa o CPF e o telefone também bate com o cadastro;
   - ou o cliente informa o CPF e a **data de nascimento** correta (segundo fator).
   - No modo restrito, o resumo é enviado só ao número do cadastro.
-- **CPF e data de nascimento nunca vão para a OpenAI:** são retirados do texto e guardados só na
+- **CPF e data de nascimento nunca vão para a plataforma de IA:** são retirados do texto e guardados só na
   sessão local.
 - **Só números +55:** um número estrangeiro nunca "bate" com um cadastro, mesmo que os dígitos finais
   sejam iguais. A comparação aceita só a diferença do nono dígito de celular.
@@ -156,7 +156,7 @@ docs/            plano técnico e esboços
   - erros contra um mesmo CPF contam em qualquer conversa.
 - **Valores conferidos:** valores em R$ na resposta da IA precisam ter vindo das ferramentas ou da
   conversa. Se não vierem, nada é enviado e a conversa vai para humano.
-- **Chaves de acesso:** as chaves da Nive, da OpenAI e da Evolution ficam criptografadas pelo sistema
+- **Chaves de acesso:** as chaves da Nive, das plataformas de IA e da Evolution ficam criptografadas pelo sistema
   operacional e nunca chegam à interface.
 - **Webhook local:** escuta só em `127.0.0.1`, com um token aleatório no caminho.
 - **Electron:** `contextIsolation`, `sandbox`, sem `nodeIntegration`, IPC só aceita a janela do app e

@@ -164,6 +164,9 @@ export interface AppSettings {
   /** apiKeyEnd: últimos 4 caracteres da chave salva (para conferência), ou null. */
   nive: { baseUrl: string; storeSlug: string; hasApiKey: boolean; apiKeyEnd: string | null };
   openai: { model: string; transcribeModel: string; hasApiKey: boolean; apiKeyEnd: string | null };
+  anthropic: { model: string; hasApiKey: boolean; apiKeyEnd: string | null };
+  /** transcribeModel: modelo que transcreve áudio quando o Gemini é quem transcreve. */
+  gemini: { model: string; transcribeModel: string; hasApiKey: boolean; apiKeyEnd: string | null };
   /** mode "embedded" = WhatsApp dentro do app (padrão); "evolution" = servidor Evolution externo. */
   evolution: { mode: "embedded" | "evolution"; baseUrl: string; instanceName: string; webhookPort: number; hasApiKey: boolean; apiKeyEnd: string | null };
   attendance: {
@@ -209,6 +212,8 @@ export interface AppSettings {
     context: string;
   };
   ai: {
+    /** Plataforma que responde os clientes. */
+    provider: AiProviderId;
     monthlyAlertUsd: number;
     maxAiRepliesPerConversationPerDay: number;
     /** Quantas mensagens anteriores da conversa a IA lê para responder. */
@@ -230,7 +235,10 @@ export interface AppSettings {
   termsAcceptedAt: number | null;
 }
 
-export type SecretKey = "niveApiKey" | "openaiApiKey" | "evolutionApiKey";
+export type SecretKey = "niveApiKey" | "openaiApiKey" | "anthropicApiKey" | "geminiApiKey" | "evolutionApiKey";
+
+/** Plataformas de IA suportadas. */
+export type AiProviderId = "openai" | "anthropic" | "gemini";
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (infer U)[]
@@ -290,6 +298,8 @@ export interface TestResult {
   ok: boolean;
   message: string;
   models?: string[];
+  /** Plataforma testada (testes de IA). */
+  provider?: AiProviderId;
 }
 
 export interface UsageBucket {

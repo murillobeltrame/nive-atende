@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.3.2 — 2026-10-31
+
+- **Escolha da plataforma de IA:** além da OpenAI (GPT), agora dá para usar a **Anthropic (Claude)** ou o **Google (Gemini)**, cada uma com a chave e os créditos do próprio lojista. Em Configurações → Inteligência artificial, com passo a passo de cada uma.
+- **Todos os modelos para escolher:** lista agrupada (econômicos, equilibrados, avançados, topo de linha e gerações anteriores) com preço e custo aproximado por mil respostas. Inclui GPT-6 Luna/Terra/Sol/Astra e as gerações 5.x e 4.x; Claude Haiku/Sonnet/Opus 5.5 e Fable 5.1; Gemini 3.5 Flash-Lite, 3.8 Flash e 4 Argon. O botão Testar mostra também os modelos extras da sua conta, e há a opção de digitar outro.
+- Novo padrão da OpenAI para instalações novas: **GPT-6 Luna** (mais novo e mais barato que o GPT-5 mini). Quem já escolheu um modelo continua com ele.
+- Áudio: OpenAI e Gemini transcrevem sozinhos. Com o Claude, os áudios são transcritos pela OpenAI ou pelo Gemini se houver chave de um deles.
+- O consumo estimado usa o preço de cada modelo de cada plataforma.
+
 ## v0.3.1 — 2026-10-31
 
 - Mesmas novidades da 0.3.0 (o instalador da 0.3.0 não chegou a ser gerado): correção nos testes automáticos, que dependiam do fuso horário do computador.
