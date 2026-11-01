@@ -87,6 +87,8 @@ export interface NiveApi {
   getStatement(customerId: string): Promise<NiveStatement>;
   searchProducts(term: string, limit?: number): Promise<NiveProduct[]>;
   getProduct(productId: string): Promise<NiveProduct | null>;
+  /** Uma página do catálogo de mercadorias ativas (para o resumo do que a loja vende). */
+  listProducts?(page: number, take: number): Promise<{ items: NiveProduct[]; total: number | null }>;
   createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }): Promise<NiveDraftSale>;
   /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
   findCustomersByName(name: string): Promise<NiveCustomer[]>;
@@ -302,6 +304,17 @@ export class NiveClient implements NiveApi {
     const items = (Array.isArray(raw.items) ? raw.items : Array.isArray(raw) ? raw : []) as Json[];
     const base = this.cfg().baseUrl;
     return items.map((p) => toProduct(p, base)).filter((p) => p.active).slice(0, limit);
+  }
+
+  async listProducts(page: number, take: number): Promise<{ items: NiveProduct[]; total: number | null }> {
+    const raw = await this.request<Json>(
+      "GET",
+      `/products?active=true&productType=MERCHANDISE&page=${Math.max(1, page)}&take=${Math.min(100, Math.max(1, take))}`,
+    );
+    const items = (Array.isArray(raw.items) ? raw.items : Array.isArray(raw) ? raw : []) as Json[];
+    const total = typeof raw.total === "number" ? raw.total : null;
+    const base = this.cfg().baseUrl;
+    return { items: items.map((p) => toProduct(p, base)), total };
   }
 
   async getProduct(productId: string): Promise<NiveProduct | null> {

@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.3.3 — 2026-10-31
+
+- **A IA conhece o catálogo da loja:** o app lê os produtos com estoque na API Nive (atualiza a cada 3 horas) e passa para a IA quais tipos de produto a loja vende de verdade. Ela não oferece mais categorias que a loja não tem (ex.: roupa numa loja de perfumes).
+- **Busca antes de dizer "temos":** a IA só confirma que tem algo depois de achar no estoque. Quando o cliente não sabe o que quer ou pergunta "o que vocês têm?", ela já mostra opções em vez de fazer mais perguntas.
+- **Fala como alguém da equipe:** sem ressalvas de robô ("não tenho essa informação", "prefiro não afirmar") e sem "vou chamar alguém da loja" como se fosse de fora. Responde dúvidas de produto (para que serve, como usar) com o que sabe, como um vendedor. Se o cliente perguntar diretamente se é robô, não nega e passa para um colega da equipe.
+
 ## v0.3.2 — 2026-10-31
 
 - **Escolha da plataforma de IA:** além da OpenAI (GPT), agora dá para usar a **Anthropic (Claude)** ou o **Google (Gemini)**, cada uma com a chave e os créditos do próprio lojista. Em Configurações → Inteligência artificial, com passo a passo de cada uma.

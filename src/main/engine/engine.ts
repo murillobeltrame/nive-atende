@@ -15,6 +15,7 @@ import type { WhatsAppGateway } from "../evolution/client";
 import type { InboundMessage } from "../evolution/parse";
 import { AiError, estimateChatCost, estimateTranscriptionCost, type AiMessage, type AiProvider } from "../ai/openai";
 import { buildSystemPrompt } from "../ai/prompt";
+import { CatalogSummary } from "../ai/catalog";
 import { newRunState, runTool, toolsFor, type ToolRunState } from "../ai/tools";
 import type { Transcoder } from "../audio/transcode";
 import { IdentityService } from "./identity";
@@ -139,6 +140,8 @@ export function isWithinBusinessHours(s: AppSettings, ts: number): boolean {
 
 export class Engine extends EventEmitter<EngineEvents> {
   readonly identity: IdentityService;
+  /** Resumo do que a loja vende (com estoque), para a IA não oferecer o que a loja não tem. */
+  readonly catalog: CatalogSummary;
   private readonly now: () => number;
   private readonly random: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
@@ -160,6 +163,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.random = deps.random ?? Math.random;
     this.setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = deps.clearTimer ?? ((t) => clearTimeout(t as NodeJS.Timeout));
+    this.catalog = new CatalogSummary(deps.store, deps.nive, this.now);
     this.identity = new IdentityService({
       store: deps.store,
       nive: deps.nive,
@@ -896,6 +900,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       blocked: Boolean(session.blockedUntil),
       storeExamples: this.storeExamples(),
       customerNotes: this.getCustomerNotes(conversationId),
+      catalogSummary: await this.catalog.get(),
     });
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
     if (extraInstruction) messages.push({ role: "system", content: extraInstruction });
