@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   Conversation,
   ConversationFilter,
+  DailySummary,
   DeepPartial,
   NavigateTarget,
   QrState,
@@ -66,6 +67,15 @@ export interface NiveAtendeApi {
   returnToAi(conversationId: string): Promise<Conversation>;
   suggestReply(conversationId: string): Promise<string>;
 
+  /** Preferências que a IA anotou sobre o cliente. */
+  getCustomerNotes(conversationId: string): Promise<string[]>;
+  removeCustomerNote(conversationId: string, note: string): Promise<string[]>;
+
+  // simulador (conversa de teste com a IA, sem WhatsApp)
+  simMessages(): Promise<ChatMessage[]>;
+  simSend(text: string): Promise<void>;
+  simReset(): Promise<void>;
+
   // reservas, consumo, auditoria
   listReservations(): Promise<Reservation[]>;
   /** Aprova; quando há cadastros parecidos, informe o cliente escolhido ou createNew. */
@@ -74,6 +84,7 @@ export interface NiveAtendeApi {
   /** Cancela a reserva; se já virou rascunho, cancela o rascunho no ERP (as peças voltam ao estoque). */
   cancelReservation(id: string): Promise<Reservation>;
   getUsage(): Promise<UsageSummary>;
+  getDailySummary(): Promise<DailySummary>;
   listAudit(limit?: number): Promise<AuditEntry[]>;
 
   // utilidades
@@ -91,6 +102,7 @@ export interface NiveAtendeApi {
   onNavigate(cb: (t: NavigateTarget) => void): () => void;
   /** O que a IA está fazendo numa conversa agora (label null = terminou). */
   onActivity(cb: (a: { conversationId: string; label: string | null }) => void): () => void;
+  onSim(cb: (e: { message?: ChatMessage; activity?: string | null }) => void): () => void;
 }
 
 /** Nomes dos canais de eventos (main → renderer). */
@@ -102,6 +114,7 @@ export const EVENTS = {
   reservation: "evt:reservation",
   navigate: "evt:navigate",
   activity: "evt:activity",
+  sim: "evt:sim",
 } as const;
 
 /** Métodos invocáveis (renderer → main). O canal é "rpc:<método>". */
@@ -136,11 +149,17 @@ export const RPC_METHODS = [
   "takeOver",
   "returnToAi",
   "suggestReply",
+  "getCustomerNotes",
+  "removeCustomerNote",
+  "simMessages",
+  "simSend",
+  "simReset",
   "listReservations",
   "approveReservation",
   "rejectReservation",
   "cancelReservation",
   "getUsage",
+  "getDailySummary",
   "listAudit",
   "openExternal",
   "getAppInfo",

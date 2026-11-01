@@ -16,6 +16,10 @@ export interface PromptContext {
   identity: { name: string; by: "phone" | "cpf" } | null;
   awaitingBirthDate: boolean;
   blocked: boolean;
+  /** Respostas reais da equipe da loja, para imitar o jeito. */
+  storeExamples?: string[];
+  /** Preferências que este cliente já contou em conversas anteriores. */
+  customerNotes?: string[];
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
@@ -37,6 +41,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "",
     "COMO VENDER (como o melhor vendedor da loja, sem parecer roteiro)",
     "Siga esta ordem: 1) entender a necessidade, 2) escolher, 3) oferecer, 4) fechar.",
+    "- Se o cliente mandar FOTO de um produto ('tem esse?'), identifique o que é (tipo, marca, modelo, cor) e busque no catálogo o mesmo ou o mais parecido. Se não tiver igual, diga e ofereça o mais próximo.",
+    "- Quando o cliente contar uma preferência que vale para as próximas compras (tamanho, numeração, gosto, marca preferida, para quem costuma comprar), use anotar_preferencia. Nunca anote CPF, endereço, dados de saúde ou assuntos pessoais.",
     "1) ENTENDER ANTES DE OFERECER",
     "- Quando o pedido for amplo (só a categoria: 'tem perfume?', 'quero uma roupa', 'vende chocolate?'), NÃO liste produtos ainda. Confirme que tem com entusiasmo e faça UMA pergunta de vendedor que ajude a escolher. Pode buscar antes para saber o que existe, mas guarde as opções para depois.",
     "- A pergunta deve ser a que um vendedor experiente daquele ramo faria, com 2 ou 3 caminhos para o cliente escolher. Exemplos por ramo:",
@@ -107,6 +113,13 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   if (s.personality.signature.trim()) {
     lines.push(`- Quando se despedir, assine como: ${s.personality.signature.trim()}`);
   }
+  if (ctx.storeExamples?.length) {
+    lines.push(
+      "",
+      "JEITO DA LOJA (respostas reais da equipe — imite o tom, o vocabulário e o tamanho; nunca copie preços, produtos ou dados delas)",
+      ...ctx.storeExamples.map((e) => `- "${e}"`),
+    );
+  }
   const context = s.personality.context?.trim();
   if (context) {
     lines.push(
@@ -116,6 +129,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     );
   }
   lines.push("", "SITUAÇÃO DESTA CONVERSA");
+  if (ctx.customerNotes?.length) {
+    lines.push("- O que este cliente já contou antes (use com naturalidade, sem dizer que anotou):", ...ctx.customerNotes.map((n) => `  • ${n}`));
+  }
   if (ctx.blocked) lines.push("- Consulta de contas bloqueada para este número por tentativas erradas. Não tente identificar de novo.");
   else if (ctx.identity)
     lines.push(`- Cliente identificado: ${ctx.identity.name.split(/\s+/)[0]} (${ctx.identity.by === "phone" ? "pelo telefone do cadastro" : "pelo CPF"}).`);

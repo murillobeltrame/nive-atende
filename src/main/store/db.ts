@@ -426,6 +426,16 @@ export class Store {
     return rows.map((r) => this.toMessage(r));
   }
 
+  /** Textos recentes enviados pela equipe (app ou celular), mais novos primeiro. */
+  listRecentHumanReplies(limit = 40): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT text FROM messages WHERE origin IN ('humano_app','humano_celular') AND kind = 'text' AND text IS NOT NULL AND status <> 'deleted' ORDER BY created_at DESC LIMIT ?",
+      )
+      .all(limit) as Row[];
+    return rows.map((r) => str(r.text));
+  }
+
   /** Mensagens do cliente ainda não tratadas pelo motor. */
   listUnprocessed(conversationId: string): ChatMessage[] {
     const rows = this.db
@@ -607,6 +617,30 @@ export class Store {
       transcriptionSeconds: num(r.transcription_seconds),
       costUsd: num(r.cost_usd),
     }));
+  }
+
+  /** Números de um dia (início/fim em ms) para o resumo diário. */
+  daySummary(from: number, to: number): {
+    conversations: number;
+    newContacts: number;
+    unanswered: number;
+    reservationsCreated: number;
+    reservationsPending: number;
+    reservationsCompleted: number;
+  } {
+    const one = (sql: string, ...p: Array<number | string>) => num((this.db.prepare(sql).get(...p) as Row).n);
+    return {
+      conversations: one("SELECT COUNT(DISTINCT conversation_id) AS n FROM messages WHERE origin = 'consumidor' AND created_at >= ? AND created_at < ?", from, to),
+      newContacts: one(
+        "SELECT COUNT(*) AS n FROM (SELECT conversation_id, MIN(created_at) AS f FROM messages WHERE origin = 'consumidor' GROUP BY conversation_id) WHERE f >= ? AND f < ?",
+        from,
+        to,
+      ),
+      unanswered: one("SELECT COUNT(*) AS n FROM conversations WHERE (state = 'precisa_humano' OR last_origin = 'consumidor') AND state <> 'ignorado' AND last_message_at >= ? AND last_message_at < ?", from, to),
+      reservationsCreated: one("SELECT COUNT(*) AS n FROM reservations WHERE created_at >= ? AND created_at < ?", from, to),
+      reservationsPending: one("SELECT COUNT(*) AS n FROM reservations WHERE status = 'pending_approval'"),
+      reservationsCompleted: one("SELECT COUNT(*) AS n FROM reservations WHERE status = 'completed' AND created_at >= ?", from - 7 * 86_400_000),
+    };
   }
 
   // ------------------------------------------------------------ auditoria

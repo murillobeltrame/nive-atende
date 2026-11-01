@@ -118,8 +118,12 @@ export function createMockApi(): NiveAtendeApi {
       ignoredNumbers: ["5548999990001"],
       catchUpWindowMinutes: 120,
       onlyStoreTopics: true,
+      markAsRead: true,
+      followUpEnabled: true,
+      followUpHours: 4,
+      backInStock: true,
     },
-    reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true },
+    reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true, reminder: true, reminderHours: 3 },
     accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
     personality: {
       storeName: "Loja Exemplo",
@@ -129,9 +133,9 @@ export function createMockApi(): NiveAtendeApi {
       presentAsAssistant: false,
       context: "",
     },
-    ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40 },
+    ai: { monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
     audio: { transcribe: true, maxSeconds: 120 },
-    app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "Murillo" },
+    app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "Murillo", dailySummary: true, dailySummaryHour: 19 },
     termsAcceptedAt: params.get("terms") === "0" ? null : now - 86_400_000,
   };
 
@@ -439,6 +443,7 @@ export function createMockApi(): NiveAtendeApi {
   };
   let status = statusFor(statusParam);
 
+  const simMsgs: ChatMessage[] = [];
   const ev = {
     status: emitter<StatusSnapshot>(),
     conversation: emitter<Conversation>(),
@@ -447,6 +452,7 @@ export function createMockApi(): NiveAtendeApi {
     reservation: emitter<Reservation>(),
     navigate: emitter<NavigateTarget>(),
     activity: emitter<{ conversationId: string; label: string | null }>(),
+    sim: emitter<{ message?: ChatMessage; activity?: string | null }>(),
   };
 
   const touch = (c: Conversation, m: ChatMessage) => {
@@ -617,6 +623,34 @@ export function createMockApi(): NiveAtendeApi {
     async resendSticker(conversationId) {
       return sendHuman(conversationId, { kind: "sticker", hasMedia: true, mediaMime: "image/webp" });
     },
+    async getDailySummary() {
+      return { day: "2026-10-31", conversations: 12, newContacts: 4, unanswered: 1, reservationsCreated: 3, reservationsPending: 1, reservationsCompleted: 2, aiReplies: 41, humanReplies: 6, costUsd: 0.12, waitlist: 2 };
+    },
+    async getCustomerNotes() {
+      return ["Veste M", "Prefere perfumes doces"];
+    },
+    async removeCustomerNote() {
+      return ["Veste M"];
+    },
+    async simMessages() {
+      return simMsgs.map((m) => ({ ...m }));
+    },
+    async simSend(text) {
+      const now = Date.now();
+      const inMsg = msg({ conversationId: "sim", origin: "consumidor", kind: "text", text, createdAt: now });
+      simMsgs.push(inMsg);
+      ev.sim.emit({ message: { ...inMsg } });
+      ev.sim.emit({ activity: "Buscando produtos no sistema…" });
+      setTimeout(() => {
+        const out = msg({ conversationId: "sim", origin: "ia", kind: "text", text: "Tenho sim! É pra você ou pra presente?", createdAt: Date.now(), status: "sent" });
+        simMsgs.push(out);
+        ev.sim.emit({ activity: null });
+        ev.sim.emit({ message: { ...out } });
+      }, 1200);
+    },
+    async simReset() {
+      simMsgs.length = 0;
+    },
     async getAvatar() {
       return null;
     },
@@ -712,6 +746,7 @@ export function createMockApi(): NiveAtendeApi {
     onReservation: (cb) => ev.reservation.on(cb),
     onNavigate: (cb) => ev.navigate.on(cb),
     onActivity: (cb) => ev.activity.on(cb),
+    onSim: (cb) => ev.sim.on(cb),
   };
   return api;
 }

@@ -20,9 +20,20 @@ export interface AiToolDef {
 
 export type AiMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string | AiContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: AiToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
+
+/** Parte de mensagem do cliente: texto ou imagem (a IA "vê" a foto). */
+export type AiContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } };
+
+/** Texto de uma mensagem (ignora imagens). */
+export function messageText(m: AiMessage): string {
+  const c = m.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map((p) => (p.type === "text" ? p.text : "[foto]")).join(" ");
+  return "";
+}
 
 export interface AiToolCall {
   id: string;

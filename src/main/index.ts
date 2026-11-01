@@ -1,4 +1,5 @@
 // Processo principal do Electron: janela, ícone na bandeja, IPC e ligação entre os serviços.
+import { Simulator } from "./simulator";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, shell, Tray } from "electron";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -96,6 +97,7 @@ const gateway: WhatsAppGateway = {
   sendPresence: (...a) => wa().sendPresence(...a),
   getMediaBase64: (...a) => wa().getMediaBase64(...a),
   deleteForEveryone: (...a) => wa().deleteForEveryone(...a),
+  markRead: (...a) => wa().markRead?.(...a) ?? Promise.resolve(),
 };
 
 const monitor = new StatusMonitor({
@@ -118,6 +120,10 @@ const engine = new Engine({
   transcode: createFfmpegTranscoder(),
   blockedReason: () => monitor.blockedReason(),
 });
+const simulator = new Simulator({ settings: () => settings.get(), nive, ai });
+simulator.on("message", (m) => send(EVENTS.sim, { message: m }));
+simulator.on("activity", (a) => send(EVENTS.sim, { activity: a.label }));
+
 /** Foto de perfil: baixada e guardada por 24 h (sem foto pública: tenta de novo em 12 h). */
 const avatarInFlight = new Map<string, Promise<string | null>>();
 async function getAvatar(conversationId: string): Promise<string | null> {
@@ -145,6 +151,40 @@ async function getAvatar(conversationId: string): Promise<string | null> {
   })().finally(() => avatarInFlight.delete(conversationId));
   avatarInFlight.set(conversationId, job);
   return job;
+}
+
+/** Texto do resumo do dia (notificação e WhatsApp do dono). */
+function summaryText(d: ReturnType<typeof engine.dailySummary>): string {
+  const lines = [
+    `📊 *Resumo de hoje — Nive Atende*`,
+    `• ${d.conversations} conversa(s) com clientes (${d.newContacts} novo(s))`,
+    `• ${d.aiReplies} resposta(s) da IA e ${d.humanReplies} da equipe`,
+    `• ${d.reservationsCreated} reserva(s) pedida(s) hoje${d.reservationsPending ? ` · ${d.reservationsPending} aguardando sua aprovação` : ""}`,
+  ];
+  if (d.unanswered) lines.push(`• ⚠️ ${d.unanswered} conversa(s) esperando resposta`);
+  if (d.waitlist) lines.push(`• ${d.waitlist} cliente(s) esperando produto chegar`);
+  lines.push(`• Custo estimado de IA: US$ ${d.costUsd.toFixed(2)}`);
+  return lines.join("\n");
+}
+
+function sendDailySummaryIfDue(): void {
+  const s = settings.get();
+  if (!s.app.dailySummary) return;
+  const now = new Date();
+  if (now.getHours() < (s.app.dailySummaryHour ?? 19)) return;
+  const key = `summarySent:${now.toDateString()}`;
+  if (store.getKv(key)) return;
+  store.setKv(key, Date.now());
+  const d = engine.dailySummary();
+  if (!d.conversations && !d.reservationsPending) return; // dia sem movimento: não incomoda
+  const text = summaryText(d);
+  if (Notification.isSupported() && s.app.notify !== "nenhuma") {
+    const n = new Notification({ title: "Resumo de hoje", body: text.replace(/\*/g, "").split("\n").slice(1).join("\n"), silent: !s.app.sound });
+    n.on("click", () => navigate({ page: "pendencias" }));
+    n.show();
+  }
+  const ownerJid = registeredToJid(digitsOnly(s.app.ownerAlertNumber));
+  if (ownerJid && monitor.snapshot().checks.whatsapp.state === "ok") void wa().sendText(ownerJid, text).catch(() => undefined);
 }
 
 let lastReservationSync = 0;
@@ -529,7 +569,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   getConversation: (id) => store.getConversation(id),
   getMessages: (id) => store.listMessages(id),
   getMedia: async (messageId) => {
-    let media = store.getMedia(messageId);
+    let media = store.getMedia(messageId) ?? simulator.getMedia(messageId);
     if (!media) {
       const m = store.getMessage(messageId);
       if (!m?.waMessageId || !m.hasMedia) return null;
@@ -577,6 +617,11 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),
+  getCustomerNotes: async (id) => engine.getCustomerNotes(id),
+  removeCustomerNote: async (id, note) => engine.removeCustomerNote(id, note),
+  simMessages: async () => simulator.messages(),
+  simSend: (text) => simulator.send(text),
+  simReset: async () => simulator.reset(),
   listReservations: async () => {
     syncReservations(); // atualiza em segundo plano; mudanças chegam pelo evento de reserva
     return store.listReservations();
@@ -585,6 +630,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   rejectReservation: (id) => engine.rejectReservation(id),
   cancelReservation: (id) => engine.cancelReservation(id),
   getUsage: () => usageSummary(),
+  getDailySummary: async () => engine.dailySummary(),
   listAudit: (limit) => store.listAudit(limit ?? 200),
   openExternal: async (url) => {
     if (/^https:\/\//.test(url)) await shell.openExternal(url);
@@ -635,6 +681,12 @@ void app.whenReady().then(async () => {
   const sweepReservations = () => void engine.sweepExpiredReservations().catch((e) => log("app", "warn", "falha ao verificar reservas vencidas", e));
   setTimeout(sweepReservations, 30_000);
   setInterval(sweepReservations, 5 * 60_000);
+  // lembretes de reserva, avisos de chegada, conversas paradas e resumo do dia
+  setInterval(() => {
+    void engine.runProactive().catch((e) => log("app", "warn", "falha nas mensagens automáticas", e));
+    sendDailySummaryIfDue();
+  }, 10 * 60_000);
+  setTimeout(sendDailySummaryIfDue, 60_000);
   // rascunhos finalizados/excluídos no ERP
   setTimeout(syncReservations, 20_000);
   setInterval(syncReservations, 2 * 60_000);

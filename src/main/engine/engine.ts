@@ -2,11 +2,12 @@
 import { EventEmitter } from "node:events";
 import { prettyName, toWhatsApp } from "../ai/format";
 import { classifyTopic } from "../ai/topic";
+import { messageText } from "../ai/openai";
 import { normalizeName } from "../nive/client";
 
 /** Palavras comuns em nomes de produto que não identificam um item. */
 const GENERIC_WORDS = new Set(["perfume", "fem", "feminino", "masculino", "masc", "unissex", "com", "para", "edp", "edt", "parfum", "arabe", "kit", "tam", "cor", "unico"]);
-import type { AppSettings, ChatMessage, Conversation, Reservation, ReservationCustomerStatus, SystemEventType } from "../../shared/types";
+import type { AppSettings, ChatMessage, Conversation, DailySummary, Reservation, ReservationCustomerStatus, SystemEventType } from "../../shared/types";
 import type { Store } from "../store/db";
 import type { NiveApi, NiveProduct } from "../nive/client";
 import type { WhatsAppGateway } from "../evolution/client";
@@ -58,6 +59,16 @@ export async function defaultFetchImage(url: string): Promise<{ data: Buffer; mi
     return null;
   }
 }
+
+/** "Avise-me quando chegar". */
+export interface WaitEntry {
+  conversationId: string;
+  productId: string;
+  description: string;
+  at: number;
+  status: "waiting" | "notified" | "expired";
+}
+
 
 export interface NotifyEvent {
   kind: "needs_human" | "message" | "reservation_pending" | "reservation_created" | "blocked";
@@ -424,7 +435,8 @@ export class Engine extends EventEmitter<EngineEvents> {
       }
     }
 
-    // a partir daqui a IA vai trabalhar: o cliente vê "digitando…" enquanto ela busca e responde
+    // a partir daqui a IA vai trabalhar: lê as mensagens e o cliente vê "digitando…" enquanto ela busca e responde
+    this.markAsRead(conv.id);
     this.startTyping(conv.id);
     try {
       await this.replyWithAi(conv, fresh, ids);
@@ -552,6 +564,191 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.deps.store.setKv(`offered:${conversationId}`, { at: this.now(), ids: [...ids].slice(-60) });
   }
 
+  // ---------------------------------------------------------------- mensagens proativas
+  /** Só manda mensagem por iniciativa própria em horário razoável (e dentro do horário da loja). */
+  private canSendProactive(): boolean {
+    const d = new Date(this.now());
+    const minutes = d.getHours() * 60 + d.getMinutes();
+    return minutes >= 8 * 60 && minutes <= 20 * 60 + 30 && isWithinBusinessHours(this.s, this.now());
+  }
+
+  private proactiveAllowed(conversationId: string): boolean {
+    const c = this.deps.store.getConversation(conversationId);
+    if (!c || c.state === "ignorado" || c.state === "precisa_humano") return false;
+    if (c.aiPausedUntil && c.aiPausedUntil > this.now()) return false;
+    return true;
+  }
+
+  addWaitlist(conversationId: string, productId: string, description: string): void {
+    const list = this.deps.store.getKv<WaitEntry[]>("waitlist") ?? [];
+    if (list.some((w) => w.conversationId === conversationId && w.productId === productId && w.status === "waiting")) return;
+    list.push({ conversationId, productId, description, at: this.now(), status: "waiting" });
+    this.deps.store.setKv("waitlist", list.slice(-500));
+  }
+
+  listWaitlist(): WaitEntry[] {
+    return this.deps.store.getKv<WaitEntry[]>("waitlist") ?? [];
+  }
+
+  /** Lembretes de reserva, avisos de chegada e retomada de conversa parada. Chamado de tempos em tempos. */
+  async runProactive(): Promise<void> {
+    if (!this.s.attendance.autoEnabled || this.deps.blockedReason() || !this.canSendProactive()) return;
+    await this.checkBackInStock().catch(() => undefined);
+    await this.remindReservations().catch(() => undefined);
+    await this.followUps().catch(() => undefined);
+  }
+
+  private async checkBackInStock(): Promise<void> {
+    if (this.s.attendance.backInStock === false) return;
+    const store = this.deps.store;
+    const list = this.listWaitlist();
+    let changed = false;
+    const checked = new Map<string, boolean>();
+    for (const w of list) {
+      if (w.status !== "waiting") continue;
+      if (this.now() - w.at > 30 * 86_400_000) {
+        w.status = "expired";
+        changed = true;
+        continue;
+      }
+      if (!checked.has(w.productId)) {
+        const p = await this.deps.nive.getProduct(w.productId);
+        const ok = Boolean(
+          p && p.active && (!p.tracksStock || p.variants.some((v) => v.stockQty - store.reservedQuantity(v.id, this.now()) >= 1)),
+        );
+        checked.set(w.productId, ok);
+      }
+      if (!checked.get(w.productId) || !this.proactiveAllowed(w.conversationId)) continue;
+      await this.sendAiText(
+        w.conversationId,
+        `Oi! Passando pra avisar que o *${prettyName(w.description)}* que você queria chegou 😊 Quer que eu separe pra você?`,
+        { countsAsAiReply: false },
+      );
+      store.addAiAction(w.conversationId, { at: this.now(), label: `Avisou que chegou: ${prettyName(w.description)}`, kind: "info" });
+      w.status = "notified";
+      changed = true;
+    }
+    if (changed) store.setKv("waitlist", list);
+  }
+
+  private async remindReservations(): Promise<void> {
+    const s = this.s;
+    if (s.reservation.reminder === false) return;
+    const store = this.deps.store;
+    const before = Math.max(1, s.reservation.reminderHours || 3) * 3_600_000;
+    for (const r of store.listReservations(300)) {
+      if (r.status !== "created" || r.expiresAt <= this.now() || r.expiresAt - this.now() > before) continue;
+      if (this.now() - r.createdAt < 60 * 60_000) continue; // validade curta: não lembra logo depois de reservar
+      if (store.getKv(`remind:${r.id}`)) continue;
+      store.setKv(`remind:${r.id}`, this.now());
+      if (!this.proactiveAllowed(r.conversationId)) continue;
+      const prazo =
+        s.reservation.showDeadline !== false
+          ? ` até ${new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })}`
+          : "";
+      await this.sendAiText(
+        r.conversationId,
+        `Oi! Passando pra lembrar que o *${prettyName(r.productDescription)}* está separado pra você${prazo}. Consegue passar pra buscar? 😊`,
+        { countsAsAiReply: false },
+      );
+      store.addAiAction(r.conversationId, { at: this.now(), label: "Lembrou o cliente da reserva", kind: "info" });
+    }
+  }
+
+  private async followUps(): Promise<void> {
+    const s = this.s;
+    if (s.attendance.followUpEnabled === false) return;
+    const store = this.deps.store;
+    const after = Math.max(1, s.attendance.followUpHours || 4) * 3_600_000;
+    for (const c of store.listConversations("ia")) {
+      if (!this.proactiveAllowed(c.id) || this.running.has(c.id)) continue;
+      const msgs = store.listMessages(c.id, 30).filter((m) => m.origin !== "sistema");
+      const last = msgs.at(-1);
+      const lastCustomer = [...msgs].reverse().find((m) => m.origin === "consumidor");
+      if (!last || !lastCustomer || last.origin !== "ia" || last.status !== "sent") continue;
+      if (!(last.text ?? "").includes("?")) continue; // só quando a IA ficou esperando uma resposta
+      if (this.now() - last.createdAt < after || this.now() - lastCustomer.createdAt > 22 * 3_600_000) continue;
+      if (store.listReservations(50).some((r) => r.conversationId === c.id && r.createdAt >= lastCustomer.createdAt)) continue;
+      if ((store.getKv<number>(`followup:${c.id}`) ?? 0) >= lastCustomer.createdAt) continue;
+      store.setKv(`followup:${c.id}`, this.now());
+      const { reply, state } = await this.runAi(
+        c.id,
+        true,
+        "O cliente parou de responder há algumas horas. Escreva UMA mensagem curta, leve e gentil retomando o assunto (ex.: perguntar se ficou alguma dúvida, se quer ver uma foto ou se prefere outra opção). Não insista, não repita a lista de produtos, não ofereça desconto e não diga que é um lembrete automático.",
+      );
+      if (!reply || this.findUnconfirmedMoney(c.id, reply, state).length) continue;
+      await this.sendAiText(c.id, reply, { countsAsAiReply: true });
+      store.addAiAction(c.id, { at: this.now(), label: "Retomou a conversa parada", kind: "info" });
+    }
+  }
+
+  /** Resumo de um dia (para o app e para o WhatsApp do dono). */
+  dailySummary(day = this.now()): DailySummary {
+    const d = new Date(day);
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const to = from + 86_400_000;
+    const store = this.deps.store;
+    const nums = store.daySummary(from, to);
+    const usage = store.usageBetween(localDay(from), localDay(from))[0];
+    const waiting = this.listWaitlist().filter((w) => w.status === "waiting").length;
+    return { day: localDay(from), ...nums, aiReplies: usage?.aiReplies ?? 0, humanReplies: usage?.humanReplies ?? 0, costUsd: usage?.costUsd ?? 0, waitlist: waiting };
+  }
+
+  // ---------------------------------------------------------------- memória do cliente
+  getCustomerNotes(conversationId: string): string[] {
+    return (this.deps.store.getKv<Array<{ at: number; text: string }>>(`notes:${conversationId}`) ?? []).map((n) => n.text);
+  }
+
+  addCustomerNote(conversationId: string, text: string): void {
+    const list = this.deps.store.getKv<Array<{ at: number; text: string }>>(`notes:${conversationId}`) ?? [];
+    const norm = normalizeName(text);
+    const kept = list.filter((n) => normalizeName(n.text) !== norm);
+    kept.push({ at: this.now(), text });
+    this.deps.store.setKv(`notes:${conversationId}`, kept.slice(-15));
+    this.emit("conversation", this.deps.store.getConversation(conversationId)!);
+  }
+
+  removeCustomerNote(conversationId: string, text: string): string[] {
+    const list = this.deps.store.getKv<Array<{ at: number; text: string }>>(`notes:${conversationId}`) ?? [];
+    this.deps.store.setKv(`notes:${conversationId}`, list.filter((n) => n.text !== text));
+    return this.getCustomerNotes(conversationId);
+  }
+
+  /** Data URL da foto enviada pelo cliente (só formatos que a IA lê, até 4 MB). */
+  private imageForAi(messageId: string): string | null {
+    const media = this.deps.store.getMedia(messageId);
+    if (!media) return null;
+    const mime = media.mime.split(";")[0]!.trim();
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mime) || media.data.length > 4 * 1024 * 1024) return null;
+    return `data:${mime};base64,${Buffer.from(media.data).toString("base64")}`;
+  }
+
+  /** Exemplos reais de respostas da equipe (para a IA imitar o jeito da loja). Valores e telefones saem. */
+  private storeExamples(): string[] {
+    if (this.s.ai.learnFromStore === false) return [];
+    return this.deps.store
+      .listRecentHumanReplies(40)
+      .map((t) =>
+        guardText(t)
+          .safeText.replace(/R\$\s?\d[\d.]*(,\d{2})?/g, "R$ [valor]")
+          .replace(/\+?\d[\d\s().-]{7,}\d/g, "[número]")
+          .replace(/\s+/g, " ")
+          .trim(),
+      )
+      .filter((t) => t.length >= 15 && t.length <= 400)
+      .slice(0, 8);
+  }
+
+  /** Marca como lidas (tracinhos azuis) as mensagens do cliente que a IA vai responder. */
+  private markAsRead(conversationId: string): void {
+    if (this.s.attendance.markAsRead === false) return;
+    const ids = this.deps.store
+      .listUnprocessed(conversationId)
+      .filter((m) => m.origin === "consumidor" && m.waMessageId)
+      .map((m) => m.waMessageId!);
+    if (ids.length) void this.deps.wa.markRead?.(conversationId, ids).catch(() => undefined);
+  }
+
   /** A IA está no meio de um atendimento (respondeu há pouco e ninguém da loja entrou depois)? */
   private inActiveAiConversation(conversationId: string): boolean {
     const msgs = this.deps.store.listMessages(conversationId, 30).filter((m) => m.origin !== "consumidor" && m.origin !== "sistema");
@@ -670,17 +867,21 @@ export class Engine extends EventEmitter<EngineEvents> {
         content = `(conversa retomada em ${d}) ${content}`;
       }
       prevAt = m.createdAt;
-      if (m.origin === "consumidor") out.push({ role: "user", content });
+      if (m.origin === "consumidor") {
+        // foto recente do cliente: a IA vê a imagem para identificar o produto
+        const img = m.kind === "image" && this.now() - m.createdAt < 30 * 60_000 ? this.imageForAi(m.id) : null;
+        out.push({ role: "user", content: img ? [{ type: "text", text: content }, { type: "image_url", image_url: { url: img, detail: "low" } }] : content });
+      }
       else out.push({ role: "assistant", content: m.origin === "ia" ? content : `(resposta da equipe da loja) ${content}` });
     }
     // corta as mais antigas se o texto passar do limite (sempre mantém as mais recentes)
-    let total = out.reduce((n, m) => n + String(m.content ?? "").length, 0);
-    while (out.length > 4 && total > HISTORY_CHAR_BUDGET) total -= String(out.shift()!.content ?? "").length;
+    let total = out.reduce((n, m) => n + messageText(m).length, 0);
+    while (out.length > 4 && total > HISTORY_CHAR_BUDGET) total -= messageText(out.shift()!).length;
     while (out.length && out[0]!.role === "assistant") out.shift();
     return out;
   }
 
-  private async runAi(conversationId: string, readOnly: boolean): Promise<{ reply: string | null; state: ToolRunState }> {
+  private async runAi(conversationId: string, readOnly: boolean, extraInstruction?: string): Promise<{ reply: string | null; state: ToolRunState }> {
     const store = this.deps.store;
     const s = this.s;
     const conv = store.getConversation(conversationId)!;
@@ -692,8 +893,11 @@ export class Engine extends EventEmitter<EngineEvents> {
       identity: verified ? { name: verified.name, by: verified.by } : null,
       awaitingBirthDate: Boolean(session.pending),
       blocked: Boolean(session.blockedUntil),
+      storeExamples: this.storeExamples(),
+      customerNotes: this.getCustomerNotes(conversationId),
     });
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
+    if (extraInstruction) messages.push({ role: "system", content: extraInstruction });
     const tools = toolsFor(s, readOnly);
     const state = newRunState();
     let inTok = 0;
@@ -721,6 +925,8 @@ export class Engine extends EventEmitter<EngineEvents> {
             identity: this.identity,
             now: this.now,
             offered: this.getOffered(conversationId),
+            addNote: (note) => !readOnly && this.addCustomerNote(conversationId, note),
+            addWaitlist: (productId, description) => !readOnly && this.addWaitlist(conversationId, productId, description),
             activity: (label) => !readOnly && this.setActivity(conversationId, label),
             reserve: (input) => this.createReservation(conversationId, input),
           }, state);
@@ -770,7 +976,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private async sendAiText(conversationId: string, text: string, opts: { countsAsAiReply: boolean }): Promise<ChatMessage> {
     const store = this.deps.store;
-    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "text", text, status: "pending" });
+    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "text", text, status: "pending", createdAt: this.now() });
     this.emit("message", msg);
     try {
       // já está "digitando" desde que a IA começou; fora disso, mostra um instante antes de enviar
@@ -817,6 +1023,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       mediaMime: mime,
       hasMedia: Boolean(img),
       status: "pending",
+      createdAt: this.now(),
     });
     if (img) store.saveMedia(msg.id, mime, img.data);
     this.emit("message", msg);

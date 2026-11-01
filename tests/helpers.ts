@@ -191,6 +191,10 @@ export class FakeWa implements WhatsAppGateway {
   async sendPresence(_jid: string, p: string): Promise<void> {
     this.presence.push(p);
   }
+  read: string[] = [];
+  async markRead(_jid: string, ids: string[]): Promise<void> {
+    this.read.push(...ids);
+  }
   deleted: Array<{ jid: string; id: string }> = [];
   async deleteForEveryone(jid: string, id: string): Promise<void> {
     if (this.fail) throw new Error("falha apagar");
@@ -251,6 +255,7 @@ export function setup(opts: { settings?: DeepPartial<AppSettings>; blocked?: () 
   const ai = new FakeAi();
   const wa = new FakeWa();
   const clock = new Clock();
+  currentClock = clock;
   let settings = makeSettings(opts.settings);
   let blocked: string | null = null;
   const engine = new Engine({
@@ -281,6 +286,8 @@ export function setup(opts: { settings?: DeepPartial<AppSettings>; blocked?: () 
 }
 
 let waSeq = 0;
+/** Relógio do último setup(): as mensagens de teste chegam no mesmo "agora" do motor. */
+let currentClock: Clock | null = null;
 export function inbound(phone: string, text: string | null, extra: Partial<InboundMessage> = {}): InboundMessage {
   return {
     type: "message",
@@ -295,7 +302,7 @@ export function inbound(phone: string, text: string | null, extra: Partial<Inbou
     fileName: null,
     durationSec: null,
     base64: null,
-    timestamp: Date.now(),
+    timestamp: currentClock ? currentClock.now() : Date.now(),
     ignorable: false,
     ...extra,
   };

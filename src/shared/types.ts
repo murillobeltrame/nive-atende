@@ -130,6 +130,21 @@ export interface Reservation {
   error: string | null;
 }
 
+/** Resumo do dia para o dono da loja. */
+export interface DailySummary {
+  day: string;
+  conversations: number;
+  newContacts: number;
+  unanswered: number;
+  reservationsCreated: number;
+  reservationsPending: number;
+  reservationsCompleted: number;
+  aiReplies: number;
+  humanReplies: number;
+  costUsd: number;
+  waitlist: number;
+}
+
 export interface AuditEntry {
   id: number;
   at: number;
@@ -162,6 +177,13 @@ export interface AppSettings {
     catchUpWindowMinutes: number;
     /** Antes de responder, confere se a conversa é assunto da loja (conversa pessoal fica para o humano). */
     onlyStoreTopics: boolean;
+    /** Marca as mensagens do cliente como lidas quando a IA vai responder. */
+    markAsRead: boolean;
+    /** Um lembrete leve quando o cliente recebeu opções e parou de responder. */
+    followUpEnabled: boolean;
+    followUpHours: number;
+    /** Oferece "avise-me quando chegar" para produto esgotado e avisa quando o estoque volta. */
+    backInStock: boolean;
   };
   reservation: {
     autoEnabled: boolean;
@@ -171,6 +193,9 @@ export interface AppSettings {
     cancelExpiredDrafts: boolean;
     /** Informa ao cliente até quando o produto fica reservado. */
     showDeadline: boolean;
+    /** Lembra o cliente algumas horas antes de a reserva vencer. */
+    reminder: boolean;
+    reminderHours: number;
     requireCustomer: boolean;
   };
   accounts: { enabled: boolean; secondFactor: SecondFactor; showCharges: boolean };
@@ -188,6 +213,8 @@ export interface AppSettings {
     maxAiRepliesPerConversationPerDay: number;
     /** Quantas mensagens anteriores da conversa a IA lê para responder. */
     historyMessages: number;
+    /** Usa respostas recentes da equipe como exemplo do jeito da loja. */
+    learnFromStore: boolean;
   };
   audio: { transcribe: boolean; maxSeconds: number };
   app: {
@@ -196,6 +223,9 @@ export interface AppSettings {
     sound: boolean;
     ownerAlertNumber: string;
     operatorName: string;
+    /** Resumo do dia no app (e no WhatsApp do dono, se houver número). */
+    dailySummary: boolean;
+    dailySummaryHour: number;
   };
   termsAcceptedAt: number | null;
 }

@@ -10,6 +10,7 @@ import { PendingPage } from "./pages/Pending";
 import { ReservationsPage } from "./pages/Reservations";
 import { type SettingsSection, SettingsPage } from "./pages/Settings";
 import { UsagePage } from "./pages/Usage";
+import { SimulatorPage } from "./pages/Simulator";
 
 const SECTION_IDS: SettingsSection[] = ["conexoes", "ia", "atendimento", "reserva", "contas", "personalidade", "audio", "app"];
 
@@ -18,7 +19,7 @@ function readInitialRoute(): { page: Page; section: SettingsSection; conversatio
   const page = (p.get("page") as Page | null) ?? "conversas";
   const section = (p.get("section") as SettingsSection | null) ?? "conexoes";
   return {
-    page: ["conversas", "pendencias", "reservas", "consumo", "ajustes"].includes(page) ? page : "conversas",
+    page: ["conversas", "pendencias", "reservas", "simulador", "consumo", "ajustes"].includes(page) ? page : "conversas",
     section: SECTION_IDS.includes(section) ? section : "conexoes",
     conversationId: p.get("conversation"),
   };
@@ -158,6 +159,7 @@ export function App() {
           )}
           {page === "pendencias" && <PendingPage onOpenConversation={openConversation} />}
           {page === "reservas" && <ReservationsPage onOpenConversation={openConversation} />}
+          {page === "simulador" && <SimulatorPage onOpenSettings={openSettings} />}
           {page === "consumo" && <UsagePage onOpenGuide={() => openSettings("ia")} />}
           {page === "ajustes" && settings && (
             <SettingsPage

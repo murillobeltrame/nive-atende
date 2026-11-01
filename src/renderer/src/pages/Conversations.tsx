@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { Composer } from "../components/Composer";
-import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconUser } from "../components/Icons";
+import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconUser, IconX } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
@@ -140,6 +140,38 @@ function SetupChecklist({
   );
 }
 
+/** Preferências que a IA lembra deste cliente (o lojista pode apagar). */
+function CustomerNotes({ c }: { c: Conversation }) {
+  const [notes, setNotes] = useState<string[]>([]);
+  useEffect(() => {
+    void api.getCustomerNotes(c.id).then(setNotes).catch(() => setNotes([]));
+  }, [c.id, c.lastAiActions.length]);
+  if (!notes.length) return null;
+  return (
+    <>
+      <div className="panel-sep" />
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="panel-label">A IA lembra</span>
+        <ul className="notes">
+          {notes.map((n) => (
+            <li key={n}>
+              <span>{n}</span>
+              <button
+                className="icon-btn sm"
+                aria-label={`Esquecer: ${n}`}
+                title="Esquecer"
+                onClick={() => void api.removeCustomerNote(c.id, n).then(setNotes)}
+              >
+                <IconX size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  );
+}
+
 function ClientPanel({ c }: { c: Conversation }) {
   return (
     <aside className="client-panel" aria-label="Dados do cliente">
@@ -156,6 +188,7 @@ function ClientPanel({ c }: { c: Conversation }) {
         )}
         <span style={{ color: "var(--muted)" }}>{formatPhone(c.phone)}</span>
       </div>
+      <CustomerNotes c={c} />
       <div className="panel-sep" />
       <div className="stack" style={{ gap: 9 }}>
         <span className="panel-label">O que a IA fez</span>

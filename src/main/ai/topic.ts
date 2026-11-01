@@ -1,5 +1,5 @@
 // Decide se a conversa é assunto da loja (a IA responde) ou conversa pessoal do dono (fica para o humano).
-import type { AiMessage, AiProvider } from "./openai";
+import { type AiMessage, type AiProvider, messageText } from "./openai";
 
 export interface TopicVerdict {
   store: boolean;
@@ -20,7 +20,7 @@ const SYSTEM = [
 export async function classifyTopic(ai: AiProvider, model: string, history: AiMessage[]): Promise<TopicVerdict> {
   const transcript = history
     .slice(-16)
-    .map((m) => `${m.role === "user" ? "CONTATO" : "LOJA/DONO"}: ${String(m.content ?? "").slice(0, 400)}`)
+    .map((m) => `${m.role === "user" ? "CONTATO" : "LOJA/DONO"}: ${messageText(m).slice(0, 400)}`)
     .join("\n");
   const res = await ai.chat(model, [
     { role: "system", content: SYSTEM },

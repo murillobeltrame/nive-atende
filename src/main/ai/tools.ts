@@ -4,7 +4,7 @@ import type { NiveApi, NiveProduct } from "../nive/client";
 import type { IdentityService } from "../engine/identity";
 import type { Store } from "../store/db";
 import type { AiToolDef } from "./openai";
-import { formatBRL } from "../engine/guard";
+import { formatBRL, guardText } from "../engine/guard";
 import { prettyName } from "./format";
 
 export const TOOL_DEFS: Record<string, AiToolDef> = {
@@ -64,6 +64,27 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
     description: "Consulta o que o cliente identificado tem para pagar: saldo, parcelas, vencimentos e itens comprados. Não recebe parâmetros — o cliente é sempre o identificado nesta conversa.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
   },
+  avisar_quando_chegar: {
+    name: "avisar_quando_chegar",
+    description: "Registra que o cliente quer ser avisado quando um produto esgotado voltar ao estoque. Use só depois de o cliente aceitar.",
+    parameters: {
+      type: "object",
+      properties: { produto_id: { type: "string", description: "produto_id de um item esgotado devolvido por buscar_produto" } },
+      required: ["produto_id"],
+      additionalProperties: false,
+    },
+  },
+  anotar_preferencia: {
+    name: "anotar_preferencia",
+    description:
+      "Guarda uma preferência de compra que o cliente contou, para lembrar nas próximas conversas (ex.: 'veste M', 'calça 38', 'prefere perfumes doces', 'compra presentes para a filha'). Uma frase curta.",
+    parameters: {
+      type: "object",
+      properties: { nota: { type: "string", description: "Preferência em até 12 palavras" } },
+      required: ["nota"],
+      additionalProperties: false,
+    },
+  },
   transferir_para_humano: {
     name: "transferir_para_humano",
     description: "Passa a conversa para uma pessoa da loja. Use para desconto, troca, reclamação, assuntos fora do escopo ou quando não souber responder.",
@@ -84,6 +105,8 @@ const ACTIVITY: Record<string, string> = {
   confirmar_data_nascimento: "Conferindo o cadastro do cliente…",
   consultar_contas: "Consultando as contas do cliente…",
   transferir_para_humano: "Chamando alguém da loja…",
+  anotar_preferencia: "Anotando a preferência do cliente…",
+  avisar_quando_chegar: "Registrando o aviso de chegada…",
 };
 
 export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
@@ -93,7 +116,8 @@ export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
     names.push("consultar_contas");
     if (!readOnly) names.push("identificar_cliente", "confirmar_data_nascimento");
   }
-  if (!readOnly) names.push("transferir_para_humano");
+  if (!readOnly && settings.attendance.backInStock !== false) names.push("avisar_quando_chegar");
+  if (!readOnly) names.push("anotar_preferencia", "transferir_para_humano");
   return names.map((n) => TOOL_DEFS[n]!);
 }
 
@@ -107,6 +131,10 @@ export interface ToolContext {
   now: () => number;
   /** Produtos já mostrados ao cliente nesta conversa. */
   offered?: Set<string>;
+  /** Registra "avise-me quando chegar". */
+  addWaitlist?: (productId: string, description: string) => void;
+  /** Guarda uma preferência do cliente para as próximas conversas. */
+  addNote?: (note: string) => void;
   /** Avisa a interface o que a IA está fazendo agora ("Buscando produtos…"). */
   activity?: (label: string) => void;
   /** Cria a reserva (rascunho no ERP ou pendente de aprovação). */
@@ -211,8 +239,11 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         }),
         ...(soldOut.length
           ? {
-              esgotados: soldOut.slice(0, 5).map(({ p }) => prettyName(p.description)),
-              obs_esgotados: "Esgotados: não ofereça. Só mencione se o cliente perguntar exatamente por um deles, e já sugira uma alternativa com estoque.",
+              esgotados: soldOut.slice(0, 5).map(({ p }) => ({ produto_id: p.id, nome: prettyName(p.description) })),
+              obs_esgotados:
+                ctx.settings.attendance.backInStock !== false
+                  ? "Esgotados: não ofereça. Se o cliente perguntar exatamente por um deles, diga que acabou, sugira uma alternativa com estoque e ofereça avisar quando chegar (avisar_quando_chegar)."
+                  : "Esgotados: não ofereça. Só mencione se o cliente perguntar exatamente por um deles, e já sugira uma alternativa com estoque.",
             }
           : {}),
       };
@@ -352,6 +383,23 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
           : { observacao: "Não mencione juros ou multa; informe só os valores." }),
         instrucao: "Responda só o que o cliente perguntou, de forma resumida. Ofereça os detalhes (itens/parcelas) se fizer sentido.",
       };
+    }
+
+    case "avisar_quando_chegar": {
+      const p = await ctx.nive.getProduct(str(args.produto_id));
+      if (!p) return { resultado: "PRODUTO_NAO_ENCONTRADO" };
+      ctx.addWaitlist?.(p.id, p.description);
+      state.actions.push({ label: `Vai avisar quando chegar: ${prettyName(p.description)}`, kind: "info" });
+      return { resultado: "REGISTRADO", instrucao: "Confirme que vai avisar assim que chegar." };
+    }
+
+    case "anotar_preferencia": {
+      const raw = str(args.nota);
+      const nota = guardText(raw).safeText.replace(/\s+/g, " ").trim().slice(0, 120);
+      if (nota.length < 3 || /\d[\d\s.()-]{5,}\d/.test(raw) || nota.includes("[")) return { resultado: "IGNORADO" };
+      ctx.addNote?.(nota);
+      state.actions.push({ label: `Anotou: ${nota}`, kind: "info" });
+      return { resultado: "ANOTADO", instrucao: "Continue a conversa normalmente, sem dizer que anotou." };
     }
 
     case "transferir_para_humano": {

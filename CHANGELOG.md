@@ -1,5 +1,18 @@
 # Histórico de versões
 
+## v0.3.0 — 2026-10-31
+
+- **Testar IA (simulador):** nova tela para conversar com a IA como se fosse um cliente, com o catálogo real e as mesmas configurações, sem WhatsApp. Reservas e cadastros ali são só de teste.
+- **Aprende com a equipe:** as últimas respostas que você e sua equipe mandaram viram exemplo do jeito da loja (valores e números são removidos). Pode desligar em Configurações → IA.
+- **Foto do cliente:** quando o cliente manda foto de um produto ("tem esse?"), a IA vê a imagem e busca o mesmo ou o mais parecido no catálogo.
+- **Marcar como lida:** os tracinhos ficam azuis quando a IA vai responder.
+- **Avise-me quando chegar:** para produto esgotado, a IA oferece avisar; quando o estoque volta no sistema Nive, o cliente recebe a mensagem.
+- **Lembrete de reserva:** algumas horas antes de vencer (padrão: 3 h), o cliente recebe um lembrete para buscar.
+- **Retomar conversa parada:** se o cliente recebeu uma pergunta/opções e sumiu, a IA manda uma única mensagem leve depois de algumas horas (padrão: 4 h), só no mesmo dia.
+- **Memória do cliente:** a IA anota preferências que o cliente contou (tamanho, gosto, para quem compra) e usa nas próximas conversas; aparecem em "A IA lembra" no painel do cliente, com opção de apagar.
+- **Resumo do dia:** card em Consumo e, no horário escolhido, notificação e mensagem no seu celular (se informado).
+- Mensagens por iniciativa própria só saem entre 8h e 20h30 e dentro do horário da loja.
+
 ## v0.2.16 — 2026-10-31
 
 - A IA espera o cliente parar de digitar (ou de gravar áudio) antes de responder — WhatsApp embutido. Teto de 90 s para não travar.

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { IconBag, IconChart, IconChat, IconGear, IconInbox } from "./Icons";
+import { IconBag, IconChart, IconChat, IconGear, IconInbox, IconSpark } from "./Icons";
 
-export type Page = "conversas" | "pendencias" | "reservas" | "consumo" | "ajustes";
+export type Page = "conversas" | "pendencias" | "reservas" | "simulador" | "consumo" | "ajustes";
 
 interface Props {
   page: Page;
@@ -31,6 +31,7 @@ export function Sidebar({ page, onNavigate, pendingCount }: Props) {
       {item("conversas", "Conversas", <IconChat />)}
       {item("pendencias", "Pendências", <IconInbox />, pendingCount)}
       {item("reservas", "Reservas", <IconBag />)}
+      {item("simulador", "Testar IA", <IconSpark />)}
       {item("consumo", "Consumo", <IconChart />)}
       <div className="sidebar-spacer" />
       {item("ajustes", "Ajustes", <IconGear />)}

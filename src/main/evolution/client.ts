@@ -28,6 +28,8 @@ export interface WhatsAppGateway {
   getProfilePictureUrl?(jid: string): Promise<string | null>;
   /** Salva/renomeia o contato na agenda do WhatsApp do celular (só no WhatsApp embutido). */
   saveContact?(jid: string, name: string): Promise<void>;
+  /** Marca mensagens recebidas como lidas (tracinhos azuis). */
+  markRead?(jid: string, waMessageIds: string[]): Promise<void>;
 }
 
 type Json = Record<string, unknown>;
@@ -174,6 +176,12 @@ export class EvolutionClient implements WhatsAppGateway {
 
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void> {
     await this.request("POST", `/chat/sendPresence/${this.instance}`, { number: jid, presence, delay: delayMs }).catch(() => undefined);
+  }
+
+  async markRead(jid: string, waMessageIds: string[]): Promise<void> {
+    await this.request("POST", `/chat/markMessageAsRead/${this.instance}`, {
+      readMessages: waMessageIds.map((id) => ({ remoteJid: jid, fromMe: false, id })),
+    }).catch(() => undefined);
   }
 
   async getProfilePictureUrl(jid: string): Promise<string | null> {

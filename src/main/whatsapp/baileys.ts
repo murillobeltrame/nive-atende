@@ -476,6 +476,11 @@ export class BaileysService implements WhatsAppService {
     }
   }
 
+  async markRead(jid: string, waMessageIds: string[]): Promise<void> {
+    if (!this.sock || this.state !== "open") return;
+    await this.sock.readMessages(waMessageIds.map((id) => ({ remoteJid: jid, id, fromMe: false }))).catch(() => undefined);
+  }
+
   async saveContact(jid: string, name: string): Promise<void> {
     const sock = this.requireSock();
     const parts = name.trim().split(/\s+/);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AuditEntry, UsageSummary } from "../../../shared/types";
+import type { AuditEntry, DailySummary, UsageSummary } from "../../../shared/types";
 import { api } from "../lib/api";
 import { formatPhone, usd } from "../lib/format";
 
@@ -28,7 +28,9 @@ function Stat({ label, value, foot, cls }: { label: string; value: string; foot?
 export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
   const [u, setU] = useState<UsageSummary | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [summary, setSummary] = useState<DailySummary | null>(null);
   useEffect(() => {
+    void api.getDailySummary().then(setSummary).catch(() => undefined);
     void api.getUsage().then(setU);
     void api.listAudit(50).then(setAudit);
   }, []);
@@ -52,6 +54,26 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
             <button className="ext-link" onClick={onOpenGuide}>
               Ver como adicionar créditos
             </button>
+          </div>
+        )}
+        {summary && (
+          <div className="card day-summary">
+            <h2 className="card-title">Resumo de hoje</h2>
+            <ul>
+              <li>
+                <b>{summary.conversations}</b> conversa(s) com clientes ({summary.newContacts} novo(s))
+              </li>
+              <li>
+                <b>{summary.reservationsCreated}</b> reserva(s) pedida(s) hoje
+                {summary.reservationsPending ? ` · ${summary.reservationsPending} aguardando sua aprovação` : ""}
+              </li>
+              <li className={summary.unanswered ? "warn" : ""}>
+                <b>{summary.unanswered}</b> conversa(s) esperando resposta
+              </li>
+              <li>
+                <b>{summary.waitlist}</b> cliente(s) esperando produto chegar
+              </li>
+            </ul>
           </div>
         )}
         <h2 className="section-h" style={{ marginTop: 0 }}>Hoje</h2>

@@ -610,6 +610,14 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
               hint="Quanto mais, melhor ela lembra da conversa (e um pouco maior o custo). Padrão: 40."
             />
           </div>
+          <div className="stack">
+            <Check
+              label="Aprender com as respostas da equipe"
+              checked={ai.learnFromStore ?? true}
+              onChange={(v) => setAi({ ...ai, learnFromStore: v })}
+              hint="A IA usa as últimas respostas que você e sua equipe mandaram (pelo app ou celular) como exemplo do jeito da loja. Valores e números são removidos."
+            />
+          </div>
         </div>
       </div>
       <SaveBar
@@ -657,6 +665,27 @@ function AttendanceSection({ settings, onSettings }: Pick<Props, "settings" | "o
             checked={d.onlyStoreTopics ?? true}
             onChange={(v) => setD({ ...d, onlyStoreTopics: v })}
             hint="Antes de responder, a IA confere se a mensagem é sobre a loja. Conversa pessoal (família, amigos, fornecedores) fica sem resposta automática, para você responder."
+          />
+          <Check
+            label="Retomar conversa parada"
+            checked={d.followUpEnabled ?? true}
+            onChange={(v) => setD({ ...d, followUpEnabled: v })}
+            hint="Se o cliente recebeu opções e parou de responder, a IA manda UMA mensagem leve depois do tempo abaixo (só no mesmo dia, entre 8h e 20h30)."
+          />
+          {(d.followUpEnabled ?? true) && (
+            <Num label="Retomar depois de (horas)" value={d.followUpHours ?? 4} min={1} max={20} onChange={(v) => setD({ ...d, followUpHours: v })} />
+          )}
+          <Check
+            label="Avise-me quando chegar"
+            checked={d.backInStock ?? true}
+            onChange={(v) => setD({ ...d, backInStock: v })}
+            hint="Quando o produto está esgotado, a IA oferece avisar o cliente. Quando o estoque volta no sistema Nive, ele recebe a mensagem."
+          />
+          <Check
+            label="Marcar como lida quando a IA for responder"
+            checked={d.markAsRead ?? true}
+            onChange={(v) => setD({ ...d, markAsRead: v })}
+            hint="O cliente vê os tracinhos azuis, como quando uma pessoa lê a mensagem."
           />
           <Check
             label="Respeitar horário de funcionamento"
@@ -785,6 +814,15 @@ function ReservationSection({ settings, onSettings }: Pick<Props, "settings" | "
                 : "Desligado: “Separado! … fica reservado em seu nome.” (a validade continua valendo internamente)."
             }
           />
+          <Check
+            label="Lembrar o cliente antes de a reserva vencer"
+            checked={d.reminder ?? true}
+            onChange={(v) => setD({ ...d, reminder: v })}
+            hint="Uma mensagem do tipo “seu produto está separado, consegue passar pra buscar?” algumas horas antes do fim da validade."
+          />
+          {(d.reminder ?? true) && (
+            <Num label="Lembrar quantas horas antes" value={d.reminderHours ?? 3} min={1} max={48} onChange={(v) => setD({ ...d, reminderHours: v })} />
+          )}
           <Check
             label="Cancelar o rascunho quando a reserva vencer"
             checked={d.cancelExpiredDrafts ?? true}
@@ -991,6 +1029,15 @@ function AppSection({ settings, onSettings }: Pick<Props, "settings" | "onSettin
             hint="Se o atendimento parar por um motivo que não seja o WhatsApp (ex.: IA sem crédito), avisamos neste número."
             onChange={(v) => setD({ ...d, ownerAlertNumber: v.replace(/[^\d]/g, "") })}
           />
+          <Check
+            label="Resumo do dia"
+            checked={d.dailySummary ?? true}
+            onChange={(v) => setD({ ...d, dailySummary: v })}
+            hint="No fim do dia, um resumo com conversas, reservas e o que ficou sem resposta. Aparece como notificação e, se você informou o celular acima, também chega no seu WhatsApp."
+          />
+          {(d.dailySummary ?? true) && (
+            <Num label="Horário do resumo (hora)" value={d.dailySummaryHour ?? 19} min={0} max={23} onChange={(v) => setD({ ...d, dailySummaryHour: v })} />
+          )}
         </div>
       </div>
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ app: d }))} />
