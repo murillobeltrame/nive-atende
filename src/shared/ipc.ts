@@ -68,7 +68,8 @@ export interface NiveAtendeApi {
 
   // reservas, consumo, auditoria
   listReservations(): Promise<Reservation[]>;
-  approveReservation(id: string): Promise<Reservation>;
+  /** Aprova; quando há cadastros parecidos, informe o cliente escolhido ou createNew. */
+  approveReservation(id: string, choice?: { customerId?: string | null; createNew?: boolean }): Promise<Reservation>;
   rejectReservation(id: string): Promise<Reservation>;
   /** Cancela a reserva; se já virou rascunho, cancela o rascunho no ERP (as peças voltam ao estoque). */
   cancelReservation(id: string): Promise<Reservation>;

@@ -103,6 +103,7 @@ export type ReservationCustomerStatus =
   | "identified" // identificado pelo telefone/CPF na conversa
   | "found_by_name" // encontrado no cadastro pelo nome informado
   | "new" // não existe: será cadastrado ao lançar o rascunho
+  | "confirm" // há cadastros com nome parecido: o lojista confirma qual é (ou cadastra novo)
   | "created_new" // foi cadastrado pelo Nive Atende
   | "ambiguous" // vários clientes com o mesmo nome: rascunho sai sem cliente
   | "none"; // cliente não informou o nome
@@ -122,6 +123,8 @@ export interface Reservation {
   orderNumber: number | null;
   status: ReservationStatus;
   customerStatus: ReservationCustomerStatus;
+  /** Cadastros com nome parecido para o lojista confirmar antes de cadastrar um novo. */
+  customerCandidates: Array<{ id: string; name: string }>;
   expiresAt: number;
   createdAt: number;
   error: string | null;

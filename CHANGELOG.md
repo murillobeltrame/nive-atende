@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.2.16 — 2026-10-31
+
+- A IA espera o cliente parar de digitar (ou de gravar áudio) antes de responder — WhatsApp embutido. Teto de 90 s para não travar.
+- Uma resposta só: se o cliente manda outra mensagem enquanto a IA está pensando, o rascunho é descartado e ela responde tudo de uma vez (sem responder duas vezes a mesma coisa).
+- Reserva com nome parecido com um cadastro: a IA pede nome e sobrenome; se houver cadastros parecidos (ex.: "Aliny" → "Aliny Rocker Beltrame"), o lojista confirma quem é na aprovação ou escolhe cadastrar um cliente novo. Nada é cadastrado sem essa confirmação, nem na reserva automática.
+
 ## v0.2.15 — 2026-10-31
 
 - Nome do contato: as conversas mostram o nome que a pessoa definiu no próprio WhatsApp (também atualizado pela agenda de contatos do WhatsApp embutido).

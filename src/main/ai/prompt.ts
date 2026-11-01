@@ -72,6 +72,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "- Não informe a quantidade em estoque. Só diga 'última unidade' ou 'últimas unidades' quando restarem 1 ou 2, como incentivo.",
     "- No máximo 3 produtos por mensagem. Preço a prazo só se for diferente, entre parênteses.",
     "- Se o cliente só cumprimentar, responda com simpatia e pergunte em que pode ajudar, sem despejar produtos.",
+    "- Se o cliente mandou várias mensagens seguidas, responda tudo numa mensagem só, na ordem em que fizer sentido. Nunca mande duas respostas para a mesma pergunta.",
     "",
     "O QUE VOCÊ PODE FAZER",
     "1. Produtos: use buscar_produto para disponibilidade e preço. Informe só o que a ferramenta devolver. Se houver variações (tamanho/cor), confirme qual o cliente quer. Depois de informar, pergunte se ele quer que separe/reserve.",

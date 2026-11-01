@@ -160,6 +160,7 @@ function handleWaEvents(source: WhatsAppService, events: EvolutionEvent[]): void
   for (const ev of events) {
     if (ev.type === "message") void engine.handleInbound(ev).catch((e) => console.error("[whatsapp]", e));
     else if (ev.type === "revoke") engine.handleRevoke(ev.remoteJid, ev.waMessageId);
+    else if (ev.type === "typing") engine.handleTyping(ev.jid, ev.state);
     else if (ev.type === "contact") {
       const before = store.getConversation(ev.jid);
       const after = before ? store.setPushName(ev.jid, ev.name) : null;
@@ -580,7 +581,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     syncReservations(); // atualiza em segundo plano; mudanças chegam pelo evento de reserva
     return store.listReservations();
   },
-  approveReservation: (id) => engine.approveReservation(id),
+  approveReservation: (id, choice) => engine.approveReservation(id, choice),
   rejectReservation: (id) => engine.rejectReservation(id),
   cancelReservation: (id) => engine.cancelReservation(id),
   getUsage: () => usageSummary(),

@@ -9,6 +9,8 @@ export function customerInfo(r: Reservation): { text: string; tone: "ok" | "warn
       return { text: "Cliente encontrado no cadastro pelo nome", tone: "ok" };
     case "new":
       return { text: "Cliente novo: será cadastrado (nome e telefone) ao aprovar", tone: "warn" };
+    case "confirm":
+      return { text: "Há cadastros com nome parecido: confirme quem é antes de aprovar", tone: "warn" };
     case "created_new":
       return { text: "Cliente cadastrado pelo Nive Atende", tone: "ok" };
     case "ambiguous":
@@ -20,5 +22,6 @@ export function customerInfo(r: Reservation): { text: string; tone: "ok" | "warn
 
 export function approveLabel(r: Reservation): string {
   if (r.status === "failed") return "Tentar de novo";
+  if (r.customerStatus === "confirm") return "Confirmar cliente e lançar rascunho";
   return r.customerStatus === "new" ? "Aprovar, cadastrar cliente e lançar rascunho" : "Aprovar e lançar rascunho";
 }

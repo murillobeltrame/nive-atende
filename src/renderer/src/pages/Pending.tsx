@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { approveLabel, customerInfo } from "../lib/reservation";
+import { type Choice, CustomerChoice, needsChoice } from "../components/CustomerChoice";
 import { prettyName } from "../../../shared/format";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
@@ -31,6 +32,7 @@ export function PendingPage({ onOpenConversation }: Props) {
     };
   }, []);
 
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
   const act = async (id: string, fn: (id: string) => Promise<Reservation>) => {
     setBusy(id);
     setError(null);
@@ -38,7 +40,7 @@ export function PendingPage({ onOpenConversation }: Props) {
       await fn(id);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(e));
     } finally {
       setBusy(null);
     }
@@ -91,6 +93,7 @@ export function PendingPage({ onOpenConversation }: Props) {
                     {money(r.unitPrice * r.quantity)} · pedido às {listTime(r.createdAt)}
                   </div>
                   {customerInfo(r) && <div className={`desc cust-${customerInfo(r)!.tone}`}>{customerInfo(r)!.text}</div>}
+                  <CustomerChoice r={r} value={choices[r.id]} onChange={(c) => setChoices((p) => ({ ...p, [r.id]: c }))} />
                 </div>
                 <div className="btn-row">
                   <button className="btn sm" onClick={() => onOpenConversation(r.conversationId)}>
@@ -99,7 +102,11 @@ export function PendingPage({ onOpenConversation }: Props) {
                   <button className="btn sm danger" disabled={busy === r.id} onClick={() => act(r.id, api.rejectReservation)}>
                     Recusar
                   </button>
-                  <button className="btn sm primary" disabled={busy === r.id} onClick={() => act(r.id, api.approveReservation)}>
+                  <button
+                    className="btn sm primary"
+                    disabled={busy === r.id || needsChoice(r, choices[r.id])}
+                    onClick={() => act(r.id, (id) => api.approveReservation(id, choices[r.id]))}
+                  >
                     {approveLabel(r)}
                   </button>
                 </div>

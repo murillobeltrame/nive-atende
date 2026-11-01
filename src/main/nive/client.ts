@@ -90,6 +90,8 @@ export interface NiveApi {
   createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }): Promise<NiveDraftSale>;
   /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
   findCustomersByName(name: string): Promise<NiveCustomer[]>;
+  /** Clientes cujo nome contém todas as palavras informadas (ex.: "Aliny" → "Aliny Rocker Beltrame"). */
+  findSimilarCustomers(name: string): Promise<NiveCustomer[]>;
   createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer>;
   /** Situação atual da venda no ERP. */
   getSaleState(saleId: string): Promise<{ state: "draft" | "completed" | "cancelled" | "not_found"; orderNumber: number | null }>;
@@ -318,6 +320,20 @@ export class NiveClient implements NiveApi {
     const raw = await this.request<unknown>("GET", `/customers?q=${encodeURIComponent(name.trim())}`);
     const list = Array.isArray(raw) ? raw : Array.isArray((raw as Json)?.items) ? ((raw as Json).items as unknown[]) : [];
     return (list as Json[]).map(toCustomer).filter((c) => normalizeName(c.name) === target);
+  }
+
+  async findSimilarCustomers(name: string): Promise<NiveCustomer[]> {
+    const words = normalizeName(name).split(" ").filter((w) => w.length >= 2);
+    if (!words.length || words.join("").length < 3) return [];
+    const raw = await this.request<unknown>("GET", `/customers?q=${encodeURIComponent(name.trim())}`);
+    const list = Array.isArray(raw) ? raw : Array.isArray((raw as Json)?.items) ? ((raw as Json).items as unknown[]) : [];
+    return (list as Json[])
+      .map(toCustomer)
+      .filter((c) => {
+        const parts = normalizeName(c.name).split(" ");
+        return words.every((w) => parts.some((p) => p.startsWith(w)));
+      })
+      .slice(0, 8);
   }
 
   async createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer> {

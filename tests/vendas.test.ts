@@ -192,3 +192,46 @@ describe("foto com legenda", () => {
     expect(hist.join("\n")).not.toContain("[imagem]");
   });
 });
+
+describe("espera o cliente e responde tudo de uma vez", () => {
+  it("enquanto o cliente digita, a IA espera", async () => {
+    const t = setup({ settings: { attendance: { replyDelayMinSec: 3, replyDelayMaxSec: 3 } } });
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    t.engine.handleTyping(JID, "composing");
+    await t.clock.advance(8000);
+    expect(t.ai.received).toHaveLength(0);
+    await t.engine.handleInbound(inbound(PHONE, "vc tem retinol?"));
+    t.engine.handleTyping(JID, "available");
+    await t.clock.advance(4000);
+    expect(t.ai.received).toHaveLength(1);
+    expect(t.wa.sent).toHaveLength(1);
+  });
+
+  it("para de esperar se o 'digitando' durar demais", async () => {
+    const t = setup({ settings: { attendance: { replyDelayMinSec: 3, replyDelayMaxSec: 3 } } });
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    for (let i = 0; i < 12; i++) {
+      t.engine.handleTyping(JID, "composing");
+      await t.clock.advance(10_000);
+    }
+    expect(t.ai.received).toHaveLength(1);
+  });
+
+  it("mensagem que chega enquanto a IA pensa: descarta o rascunho e responde uma vez só", async () => {
+    const t = setup();
+    t.ai.script(
+      async () => {
+        // o cliente manda outra mensagem no meio da resposta
+        await t.engine.handleInbound(inbound(PHONE, "vc tem retinol?"));
+        return reply("Oi! Em que posso ajudar?");
+      },
+      reply("Oi! Tenho retinol sim. É pra você ou pra presente?"),
+    );
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    await t.clock.advance(2000);
+    await t.clock.advance(2000);
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    expect(t.wa.sent[0]!.body).toContain("retinol");
+  });
+});

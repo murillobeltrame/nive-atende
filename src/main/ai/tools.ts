@@ -42,7 +42,7 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
         quantidade: { type: "integer", minimum: 1 },
         nome_cliente: {
           type: "string",
-          description: "Nome completo em que fica a reserva, como o cliente escreveu. Deixe vazio se o cliente já estiver identificado.",
+          description: "Nome e sobrenome de quem vai retirar, como o cliente escreveu. Deixe vazio se o cliente já estiver identificado.",
         },
       },
       required: ["produto_id", "variacao_id", "quantidade", "nome_cliente"],
@@ -130,10 +130,12 @@ export interface ToolRunState {
   handoffReason: string | null;
   /** Produtos vistos nesta rodada (para reservar/mostrar foto sem confiar em dados da IA). */
   products: Map<string, NiveProduct>;
+  /** A rodada já mudou algo fora da conversa (reserva, transferência): a resposta não pode ser descartada. */
+  sideEffect: boolean;
 }
 
 export function newRunState(): ToolRunState {
-  return { money: new Set(), photos: [], actions: [], handoffReason: null, products: new Map() };
+  return { money: new Set(), photos: [], actions: [], handoffReason: null, products: new Map(), sideEffect: false };
 }
 
 function addMoney(state: ToolRunState, ...values: number[]): void {
@@ -247,12 +249,20 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         }
       }
       const verified = ctx.identity.verifiedCustomerId(ctx.conversationId);
+      const givenName = verified ? null : cleanPersonName(str(args.nome_cliente));
+      if (!verified && (!givenName || givenName.split(" ").length < 2)) {
+        return {
+          resultado: "PRECISA_NOME_COMPLETO",
+          instrucao: "Antes de reservar, peça com naturalidade o nome e sobrenome de quem vai retirar (ex.: 'Me passa seu nome completo pra eu deixar separado?'). Depois chame reservar_produto de novo.",
+        };
+      }
       if (ctx.settings.reservation.requireCustomer && !verified) {
         return {
           resultado: "PRECISA_CADASTRO",
           instrucao: "Diga que para reservar por aqui é preciso ter cadastro na loja e que alguém vai finalizar o atendimento.",
         };
       }
+      state.sideEffect = true;
       const r = await ctx.reserve({
         product,
         variantId: variant.id,
@@ -260,7 +270,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         quantity,
         unitPrice: product.priceCash,
         customer: verified ? { id: verified.id, name: verified.name } : null,
-        customerName: verified ? null : cleanPersonName(str(args.nome_cliente)),
+        customerName: givenName,
       });
       addMoney(state, product.priceCash, product.priceCash * quantity);
       const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -347,6 +357,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
     case "transferir_para_humano": {
       const motivo = str(args.motivo).slice(0, 120) || "pedido do cliente";
       state.handoffReason = motivo;
+      state.sideEffect = true;
       state.actions.push({ label: `Passou para humano: ${motivo}`, kind: "handoff" });
       return { resultado: "TRANSFERIDO", instrucao: "Avise o cliente que alguém da loja vai continuar o atendimento em instantes." };
     }

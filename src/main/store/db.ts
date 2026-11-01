@@ -160,6 +160,16 @@ export interface NewMessage {
   processed?: boolean;
 }
 
+function parseCandidates(v: string | null): Array<{ id: string; name: string }> {
+  if (!v) return [];
+  try {
+    const arr = JSON.parse(v) as Array<{ id?: unknown; name?: unknown }>;
+    return Array.isArray(arr) ? arr.filter((c) => c && c.id && c.name).map((c) => ({ id: String(c.id), name: String(c.name) })) : [];
+  } catch {
+    return [];
+  }
+}
+
 export class Store {
   readonly db: DatabaseSync;
 
@@ -175,6 +185,7 @@ export class Store {
     const convCols = (this.db.prepare("PRAGMA table_info(conversations)").all() as Row[]).map((c) => str(c.name));
     if (!convCols.includes("push_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN push_name TEXT");
     if (!convCols.includes("saved_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN saved_name TEXT");
+    if (!cols.includes("customer_candidates")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_candidates TEXT");
     if (!cols.includes("customer_status")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_status TEXT NOT NULL DEFAULT 'none'");
   }
 
@@ -478,6 +489,7 @@ export class Store {
       orderNumber: numOrNull(r.order_number),
       status: str(r.status) as ReservationStatus,
       customerStatus: (strOrNull(r.customer_status) ?? "none") as ReservationCustomerStatus,
+      customerCandidates: parseCandidates(strOrNull(r.customer_candidates)),
       expiresAt: num(r.expires_at),
       createdAt: num(r.created_at),
       error: strOrNull(r.error),
@@ -489,13 +501,13 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO reservations(id, conversation_id, customer_id, customer_name, phone, product_id, variant_id,
-          product_description, variant_label, quantity, unit_price, sale_id, order_number, status, expires_at, created_at, error, customer_status)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          product_description, variant_label, quantity, unit_price, sale_id, order_number, status, expires_at, created_at, error, customer_status, customer_candidates)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id, r.conversationId, r.customerId, r.customerName, r.phone, r.productId, r.variantId,
         r.productDescription, r.variantLabel, r.quantity, r.unitPrice, r.saleId, r.orderNumber,
-        r.status, r.expiresAt, Date.now(), r.error, r.customerStatus,
+        r.status, r.expiresAt, Date.now(), r.error, r.customerStatus, JSON.stringify(r.customerCandidates ?? []),
       );
     return this.getReservation(id)!;
   }
@@ -512,8 +524,20 @@ export class Store {
 
   updateReservation(
     id: string,
-    patch: { status?: ReservationStatus; saleId?: string | null; orderNumber?: number | null; error?: string | null; customerId?: string | null; customerStatus?: ReservationCustomerStatus },
+    patch: {
+      status?: ReservationStatus;
+      saleId?: string | null;
+      orderNumber?: number | null;
+      error?: string | null;
+      customerId?: string | null;
+      customerStatus?: ReservationCustomerStatus;
+      customerName?: string;
+      customerCandidates?: Array<{ id: string; name: string }>;
+    },
   ): Reservation {
+    if (patch.customerName !== undefined) this.db.prepare("UPDATE reservations SET customer_name = ? WHERE id = ?").run(patch.customerName, id);
+    if (patch.customerCandidates !== undefined)
+      this.db.prepare("UPDATE reservations SET customer_candidates = ? WHERE id = ?").run(JSON.stringify(patch.customerCandidates), id);
     if (patch.customerId !== undefined) this.db.prepare("UPDATE reservations SET customer_id = ? WHERE id = ?").run(patch.customerId, id);
     if (patch.customerStatus !== undefined) this.db.prepare("UPDATE reservations SET customer_status = ? WHERE id = ?").run(patch.customerStatus, id);
     if (patch.status !== undefined) this.db.prepare("UPDATE reservations SET status = ? WHERE id = ?").run(patch.status, id);

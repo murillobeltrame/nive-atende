@@ -218,3 +218,54 @@ describe("prazo da reserva na mensagem", () => {
     expect(toolResult).not.toContain("valido_ate");
   });
 });
+
+describe("nome parecido com cadastro existente", () => {
+  const aliny = { id: "c-aliny", name: "ALINY ROCKER BELTRAME", nickname: null, taxId: null, phone: "48911112222", birthDate: null };
+
+  it("só o primeiro nome: a IA pede nome e sobrenome antes de reservar", async () => {
+    const t = setup();
+    let out = "";
+    t.ai.script(reserve("Aliny"), (msgs) => {
+      out = String(msgs.at(-1)!.content);
+      return reply("Me passa seu nome completo?");
+    });
+    await t.engine.handleInbound(inbound(PHONE, "separa pra mim"));
+    await t.clock.advance(2000);
+    expect(out).toContain("PRECISA_NOME_COMPLETO");
+    expect(t.store.listReservations()).toHaveLength(0);
+  });
+
+  it("nome parecido: o lojista confirma quem é antes de cadastrar", async () => {
+    const t = setup();
+    t.nive.namedCustomers.push(aliny);
+    const r = await ask(t, "Aliny Rocker");
+    expect(r.customerStatus).toBe("confirm");
+    expect(r.customerCandidates).toEqual([{ id: "c-aliny", name: "ALINY ROCKER BELTRAME" }]);
+    await expect(t.engine.approveReservation(r.id)).rejects.toThrow(/Confirme qual é o cliente/);
+    const ok = await t.engine.approveReservation(r.id, { customerId: "c-aliny" });
+    expect(ok.status).toBe("created");
+    expect(ok.customerName).toBe("ALINY ROCKER BELTRAME");
+    expect(t.nive.drafts[0]!.customerId).toBe("c-aliny");
+    expect(t.nive.createdCustomers).toHaveLength(0);
+  });
+
+  it("não é nenhum dos parecidos: cadastra como cliente novo", async () => {
+    const t = setup();
+    t.nive.namedCustomers.push(aliny);
+    const r = await ask(t, "Aliny Souza");
+    expect(r.customerStatus).toBe("new"); // "Souza" não bate com Aliny Rocker Beltrame
+    const t2 = setup();
+    t2.nive.namedCustomers.push(aliny);
+    const r2 = await ask(t2, "Aliny Rocker");
+    await t2.engine.approveReservation(r2.id, { createNew: true });
+    expect(t2.nive.createdCustomers).toEqual([{ name: "Aliny Rocker", phone: "21977776666" }]);
+  });
+
+  it("reserva automática com nome parecido espera a confirmação do lojista", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    t.nive.namedCustomers.push(aliny);
+    const r = await ask(t, "Aliny Rocker");
+    expect(r.status).toBe("pending_approval");
+    expect(t.nive.drafts).toHaveLength(0);
+  });
+});

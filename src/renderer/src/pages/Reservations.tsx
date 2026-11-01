@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { money } from "../lib/format";
 import { prettyName } from "../../../shared/format";
 import { approveLabel, customerInfo } from "../lib/reservation";
+import { type Choice, CustomerChoice, needsChoice } from "../components/CustomerChoice";
 
 const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
   pending_approval: { label: "Aguardando aprovação", cls: "tag-warn" },
@@ -25,6 +26,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
 
   useEffect(() => {
     void api.listReservations().then(setItems);
@@ -89,6 +91,9 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                     <td>
                       <div>{r.customerName}</div>
                       {customerInfo(r) && <div className={`sub cust-${customerInfo(r)!.tone}`}>{customerInfo(r)!.text}</div>}
+                      {(r.status === "pending_approval" || r.status === "failed") && (
+                        <CustomerChoice r={r} value={choices[r.id]} onChange={(c) => setChoices((p) => ({ ...p, [r.id]: c }))} />
+                      )}
                       <div className="sub">pedido em {dt(r.createdAt)}</div>
                     </td>
                     <td>
@@ -156,8 +161,8 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                             </button>
                             <button
                               className="btn sm primary"
-                              disabled={busy === r.id}
-                              onClick={() => act(r.id, api.approveReservation)}
+                              disabled={busy === r.id || needsChoice(r, choices[r.id])}
+                              onClick={() => act(r.id, (id) => api.approveReservation(id, choices[r.id]))}
                             >
                               {approveLabel(r)}
                             </button>

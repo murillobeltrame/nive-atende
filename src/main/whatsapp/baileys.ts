@@ -350,6 +350,13 @@ export class BaileysService implements WhatsAppService {
       if (out.length) this.emit(out);
     };
     sock.ev.on("contacts.upsert", (l) => onContacts(l as never));
+    // "digitando…" do contato: a IA espera ele terminar antes de responder
+    sock.ev.on("presence.update", (u: { id: string; presences?: Record<string, { lastKnownPresence?: string }> }) => {
+      if (!u.id || u.id.endsWith("@g.us")) return;
+      const states = Object.values(u.presences ?? {}).map((p) => p.lastKnownPresence);
+      const state = states.includes("composing") ? "composing" : states.includes("recording") ? "recording" : "available";
+      this.emit([{ type: "typing", jid: u.id, state }]);
+    });
     sock.ev.on("contacts.update", (l) => onContacts(l as never));
 
     sock.ev.on("messages.update", (updates) => {
@@ -379,6 +386,7 @@ export class BaileysService implements WhatsAppService {
     }
     const parsed = parseMessage(msg as unknown as Record<string, unknown>);
     if (!parsed || parsed.ignorable) return;
+    if (!parsed.fromMe) this.watchPresence(sock, parsed.remoteJid);
     if (MEDIA_KINDS.has(parsed.kind) && !parsed.base64) {
       const size = Number(
         (Object.values(msg.message).find((v) => v && typeof v === "object" && "fileLength" in (v as object)) as { fileLength?: unknown } | undefined)?.fileLength ?? 0,
@@ -437,6 +445,20 @@ export class BaileysService implements WhatsAppService {
   }
 
   private presenceSubscribed = new Set<string>();
+  private presenceWatchedAt = new Map<string, number>();
+
+  /** Passa a receber o "digitando…" do contato (renova a cada 20 min). */
+  private watchPresence(sock: WASocket, jid: string): void {
+    const last = this.presenceWatchedAt.get(jid) ?? 0;
+    if (Date.now() - last < 20 * 60_000) return;
+    this.presenceWatchedAt.set(jid, Date.now());
+    if (this.presenceWatchedAt.size > 1000) this.presenceWatchedAt.clear();
+    try {
+      void sock.presenceSubscribe(jid).catch(() => undefined);
+    } catch {
+      /* opcional */
+    }
+  }
 
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused"): Promise<void> {
     try {

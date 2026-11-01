@@ -77,6 +77,8 @@ export interface EngineEvents {
 }
 
 const MAX_TOOL_ROUNDS = 7;
+/** Teto de espera enquanto o contato continua digitando. */
+const MAX_TYPING_WAIT_MS = 90_000;
 /** Limite de texto do histórico enviado à IA (mantém o custo previsível). */
 const HISTORY_CHAR_BUDGET = 16000;
 const OUT_OF_HOURS_NOTICE_INTERVAL_MS = 12 * 60 * 60 * 1000;
@@ -85,6 +87,8 @@ function customerNote(r: Reservation): string {
   switch (r.customerStatus) {
     case "new":
       return " (cliente novo: será cadastrado ao aprovar)";
+    case "confirm":
+      return " (há cadastros com nome parecido: confirme quem é ao aprovar)";
     case "found_by_name":
       return " (cliente encontrado no cadastro)";
     case "identified":
@@ -130,6 +134,10 @@ export class Engine extends EventEmitter<EngineEvents> {
   private readonly timers = new Map<string, { timer: unknown; firstAt: number }>();
   private readonly running = new Map<string, Promise<void>>();
   private readonly rerun = new Set<string>();
+  /** Até quando o contato aparece "digitando…"/"gravando áudio…" (WhatsApp embutido). */
+  private readonly typingUntil = new Map<string, number>();
+  /** Quantas vezes a resposta foi refeita porque chegou mensagem nova enquanto a IA pensava. */
+  private readonly regenerations = new Map<string, number>();
   /** IDs de mensagens que o app está enviando agora (para não confundir com resposta do celular). */
   private readonly inFlight = new Set<string>();
   private inFlightCount = 0;
@@ -281,11 +289,37 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (existing) this.clearTimer(existing.timer);
     const cap = this.deps.maxBatchWaitMs ?? 25_000;
     const wait = Math.max(0, Math.min(delay, firstAt + cap - this.now()));
+    this.arm(conversationId, wait, firstAt);
+  }
+
+  /** Dispara o atendimento depois de "wait" ms, adiando enquanto o contato estiver digitando. */
+  private arm(conversationId: string, wait: number, firstAt: number): void {
     const timer = this.setTimer(() => {
+      const typingUntil = this.typingUntil.get(conversationId) ?? 0;
+      if (typingUntil > this.now() && this.now() - firstAt < MAX_TYPING_WAIT_MS) {
+        // ainda digitando: confere de novo daqui a pouco
+        this.arm(conversationId, Math.min(2000, typingUntil - this.now()), firstAt);
+        return;
+      }
       this.timers.delete(conversationId);
       void this.process(conversationId);
     }, wait);
     this.timers.set(conversationId, { timer, firstAt });
+  }
+
+  /** O contato começou/parou de digitar ou gravar áudio. */
+  handleTyping(conversationId: string, state: "composing" | "recording" | "available"): void {
+    if (state === "available") {
+      if (!this.typingUntil.delete(conversationId)) return;
+      // parou de digitar: se havia resposta esperando, responde logo (pequena folga para a mensagem chegar)
+      const t = this.timers.get(conversationId);
+      if (t) {
+        this.clearTimer(t.timer);
+        this.arm(conversationId, 1500, t.firstAt);
+      }
+      return;
+    }
+    this.typingUntil.set(conversationId, this.now() + (state === "recording" ? 30_000 : 12_000));
   }
 
   private cancelSchedule(conversationId: string): void {
@@ -456,7 +490,17 @@ export class Engine extends EventEmitter<EngineEvents> {
       store.markProcessed(ids);
       return this.handoff(conv.id, "erro ao gerar resposta");
     }
-    store.markProcessed(ids);
+    // Chegou mensagem nova enquanto a IA pensava? Descarta o rascunho e responde tudo de uma vez.
+    const arrivedMeanwhile = store.listUnprocessed(conv.id).filter((m) => !ids.includes(m.id));
+    const regen = this.regenerations.get(conv.id) ?? 0;
+    if (arrivedMeanwhile.length && !result.state.sideEffect && regen < 3) {
+      this.regenerations.set(conv.id, regen + 1);
+      // a mensagem nova já agendou o atendimento (e espera o cliente parar de digitar)
+      if (!this.timers.has(conv.id)) this.rerun.add(conv.id);
+      return;
+    }
+    this.regenerations.delete(conv.id);
+    store.markProcessed([...ids, ...arrivedMeanwhile.map((m) => m.id)]);
     const { reply, state } = result;
 
     for (const a of state.actions) store.addAiAction(conv.id, { at: this.now(), label: a.label, kind: a.kind });
@@ -959,9 +1003,32 @@ export class Engine extends EventEmitter<EngineEvents> {
     customer: { id: string; name: string } | null,
     name: string | null,
     phone: string,
+  ): Promise<{
+    customerId: string | null;
+    customerName: string | null;
+    customerStatus: ReservationCustomerStatus;
+    customerCandidates: Array<{ id: string; name: string }>;
+  }> {
+    if (customer) return { customerId: customer.id, customerName: customer.name, customerStatus: "identified", customerCandidates: [] };
+    if (!name) return { customerId: null, customerName: null, customerStatus: "none", customerCandidates: [] };
+    const r = await this.resolveByName(name, phone);
+    if (r.customerStatus !== "new") return { ...r, customerCandidates: [] };
+    // não achou o nome exato: procura cadastros parecidos ("Aliny" → "Aliny Rocker Beltrame") para o lojista confirmar
+    try {
+      const similar = await this.deps.nive.findSimilarCustomers(name);
+      const byPhone = similar.filter((c) => samePhone(c.phone, phone));
+      if (byPhone.length === 1) return { customerId: byPhone[0]!.id, customerName: byPhone[0]!.name, customerStatus: "found_by_name", customerCandidates: [] };
+      if (similar.length) return { ...r, customerStatus: "confirm", customerCandidates: similar.map((c) => ({ id: c.id, name: c.name })) };
+    } catch {
+      /* segue como cliente novo */
+    }
+    return { ...r, customerCandidates: [] };
+  }
+
+  private async resolveByName(
+    name: string,
+    phone: string,
   ): Promise<{ customerId: string | null; customerName: string | null; customerStatus: ReservationCustomerStatus }> {
-    if (customer) return { customerId: customer.id, customerName: customer.name, customerStatus: "identified" };
-    if (!name) return { customerId: null, customerName: null, customerStatus: "none" };
     try {
       const found = await this.deps.nive.findCustomersByName(name);
       if (found.length === 1) return { customerId: found[0]!.id, customerName: found[0]!.name, customerStatus: "found_by_name" };
@@ -995,11 +1062,14 @@ export class Engine extends EventEmitter<EngineEvents> {
     const conv = store.getConversation(conversationId)!;
     const expiresAt = this.now() + s.reservation.validityHours * 3_600_000;
     const who = await this.resolveReservationCustomer(input.customer, input.customerName, conv.phone);
+    // com cadastro parecido, mesmo na reserva automática o lojista confirma quem é antes de lançar
+    const auto = s.reservation.autoEnabled && who.customerStatus !== "confirm";
     let r = store.insertReservation({
       conversationId,
       customerId: who.customerId,
       customerName: who.customerName ?? conv.customerName ?? conv.displayName,
       customerStatus: who.customerStatus,
+      customerCandidates: who.customerCandidates,
       phone: conv.phone,
       productId: input.product.id,
       variantId: input.variantId,
@@ -1009,12 +1079,12 @@ export class Engine extends EventEmitter<EngineEvents> {
       unitPrice: input.unitPrice,
       saleId: null,
       orderNumber: null,
-      status: s.reservation.autoEnabled ? "created" : "pending_approval",
+      status: auto ? "created" : "pending_approval",
       expiresAt,
       error: null,
     });
     const item = `${r.quantity}× ${prettyName(r.productDescription)}`;
-    if (s.reservation.autoEnabled) {
+    if (auto) {
       r = await this.pushReservationToErp(r);
       if (r.status === "created") {
         this.addSystemEvent(
@@ -1067,11 +1137,17 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
   }
 
-  async approveReservation(id: string): Promise<Reservation> {
+  async approveReservation(id: string, choice?: { customerId?: string | null; createNew?: boolean }): Promise<Reservation> {
     const store = this.deps.store;
     let r = store.getReservation(id);
     if (!r) throw new Error("Reserva não encontrada");
     if (r.status !== "pending_approval" && r.status !== "failed") return r;
+    if (r.customerStatus === "confirm") {
+      const picked = choice?.customerId ? r.customerCandidates.find((c) => c.id === choice.customerId) : null;
+      if (picked) r = store.updateReservation(r.id, { customerId: picked.id, customerName: picked.name, customerStatus: "found_by_name", customerCandidates: [] });
+      else if (choice?.createNew) r = store.updateReservation(r.id, { customerStatus: "new", customerCandidates: [] });
+      else throw new Error("Confirme qual é o cliente (ou escolha cadastrar um novo) antes de aprovar.");
+    }
     if (r.expiresAt <= this.now()) {
       r = store.updateReservation(r.id, { status: "expired" });
       this.emit("reservation", r);

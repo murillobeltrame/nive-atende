@@ -150,7 +150,7 @@ describe("reservas", () => {
     const t = setup({ settings: { reservation: { autoEnabled: true } } });
     t.ai.script(
       toolCall("buscar_produto", { termo: "bolsa caramelo" }),
-      toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1 }),
+      toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1, nome_cliente: "Maria Teste" }),
       reply("Separado! Fica reservada até amanhã."),
     );
     await t.engine.handleInbound(inbound(PHONE, "separa a bolsa caramelo pra mim"));
@@ -165,7 +165,7 @@ describe("reservas", () => {
   it("reserva automática desligada fica aguardando aprovação; aprovar cria o rascunho e avisa o cliente", async () => {
     const t = setup();
     let result = "";
-    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1 }), (msgs) => {
+    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1, nome_cliente: "Maria Teste" }), (msgs) => {
       result = String((msgs.at(-1) as { content: string }).content);
       return reply("Vou pedir para separarem e já te confirmo.");
     });
@@ -182,11 +182,11 @@ describe("reservas", () => {
 
   it("não reserva acima do estoque disponível (descontando reservas já feitas)", async () => {
     const t = setup({ settings: { reservation: { autoEnabled: true } } });
-    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1 }), reply("Separado!"));
+    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1, nome_cliente: "Maria Teste" }), reply("Separado!"));
     await t.engine.handleInbound(inbound(PHONE, "separa"));
     await t.clock.advance(2000);
     let res = "";
-    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1 }), (msgs) => {
+    t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1, nome_cliente: "Maria Teste" }), (msgs) => {
       res = String((msgs.at(-1) as { content: string }).content);
       return reply("Acabou de sair a última.");
     });
@@ -198,7 +198,7 @@ describe("reservas", () => {
   it("respeita o limite de unidades por reserva", async () => {
     const t = setup({ settings: { reservation: { autoEnabled: true, maxQtyPerOrder: 1 } } });
     let res = "";
-    t.ai.script(toolCall("reservar_produto", { produto_id: "p-tenis", variacao_id: "v-40", quantidade: 2 }), (msgs) => {
+    t.ai.script(toolCall("reservar_produto", { produto_id: "p-tenis", variacao_id: "v-40", quantidade: 2, nome_cliente: "Maria Teste" }), (msgs) => {
       res = String((msgs.at(-1) as { content: string }).content);
       return reply("Por aqui consigo separar 1.");
     });

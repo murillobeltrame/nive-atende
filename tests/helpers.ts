@@ -95,6 +95,11 @@ export class FakeNive implements NiveApi {
     const { normalizeName } = await import("../src/main/nive/client");
     return [...CUSTOMERS, ...this.namedCustomers].filter((c) => normalizeName(c.name) === normalizeName(name));
   }
+  async findSimilarCustomers(name: string): Promise<NiveCustomer[]> {
+    const { normalizeName } = await import("../src/main/nive/client");
+    const words = normalizeName(name).split(" ");
+    return [...CUSTOMERS, ...this.namedCustomers].filter((c) => words.every((w) => normalizeName(c.name).split(" ").some((p) => p.startsWith(w))));
+  }
   async createCustomer(input: { name: string; phone: string | null }): Promise<NiveCustomer> {
     this.createdCustomers.push(input);
     const c = { id: `new-${this.createdCustomers.length}`, name: input.name, nickname: null, taxId: null, phone: input.phone, birthDate: null };
@@ -120,7 +125,7 @@ export class FakeNive implements NiveApi {
   }
 }
 
-type Step = AiChatResult | ((messages: AiMessage[], tools: AiToolDef[]) => AiChatResult);
+type Step = AiChatResult | ((messages: AiMessage[], tools: AiToolDef[]) => AiChatResult | Promise<AiChatResult>);
 
 /** IA roteirizada: cada chamada de chat consome um passo. Guarda tudo o que recebeu. */
 export class FakeAi implements AiProvider {

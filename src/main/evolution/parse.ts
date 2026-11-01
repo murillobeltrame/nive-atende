@@ -56,7 +56,14 @@ export interface ContactEvent {
   name: string;
 }
 
-export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent | RevokeEvent | ContactEvent;
+/** O contato está digitando/gravando (ou parou). */
+export interface TypingEvent {
+  type: "typing";
+  jid: string;
+  state: "composing" | "recording" | "available";
+}
+
+export type EvolutionEvent = InboundMessage | ConnectionEvent | QrEvent | AckEvent | RevokeEvent | ContactEvent | TypingEvent;
 
 function asObj(v: unknown): Json {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {};
