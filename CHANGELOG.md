@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.1 — 2026-10-31
+
+- Mesmas novidades da 0.3.0 (o instalador da 0.3.0 não chegou a ser gerado): correção nos testes automáticos, que dependiam do fuso horário do computador.
+
 ## v0.3.0 — 2026-10-31
 
 - **Testar IA (simulador):** nova tela para conversar com a IA como se fosse um cliente, com o catálogo real e as mesmas configurações, sem WhatsApp. Reservas e cadastros ali são só de teste.
