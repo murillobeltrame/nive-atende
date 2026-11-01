@@ -272,6 +272,11 @@ function navigate(t: NavigateTarget): void {
 
 engine.on("message", (m) => send(EVENTS.message, m));
 engine.on("activity", (a) => send(EVENTS.activity, a));
+engine.on("typing", (t) => send(EVENTS.typing, t));
+engine.on("conversationDeleted", (id) => {
+  send(EVENTS.conversationDeleted, id);
+  refreshTray();
+});
 engine.on("conversation", (c) => {
   send(EVENTS.conversation, c);
   refreshTray();
@@ -607,6 +612,10 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   sendAudio: (id, base64, mime) => engine.sendHumanAudio(id, base64, mime, settings.get().app.operatorName),
   resendSticker: (id, messageId) => engine.resendSticker(id, messageId, settings.get().app.operatorName),
   deleteMessage: (messageId) => engine.deleteMessage(messageId),
+  deleteConversation: async (conversationId) => {
+    engine.deleteConversation(conversationId);
+    log("conversas", "info", "conversa apagada pelo lojista", conversationId);
+  },
   getAvatar: (conversationId) => getAvatar(conversationId),
   saveContact: async (conversationId, name, saveToPhone) => {
     if (!store.getConversation(conversationId)) throw new Error("Conversa não encontrada");

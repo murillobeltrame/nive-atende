@@ -66,6 +66,8 @@ export interface NiveAtendeApi {
   resendSticker(conversationId: string, messageId: string): Promise<ChatMessage>;
   /** "Apagar para todos": só mensagens enviadas pela loja (IA ou equipe). */
   deleteMessage(messageId: string): Promise<ChatMessage>;
+  /** Apaga a conversa do app (mensagens e mídias). Não apaga no celular. */
+  deleteConversation(conversationId: string): Promise<void>;
   takeOver(conversationId: string): Promise<Conversation>;
   returnToAi(conversationId: string): Promise<Conversation>;
   suggestReply(conversationId: string): Promise<string>;
@@ -106,6 +108,9 @@ export interface NiveAtendeApi {
   /** O que a IA está fazendo numa conversa agora (label null = terminou). */
   onActivity(cb: (a: { conversationId: string; label: string | null }) => void): () => void;
   onSim(cb: (e: { message?: ChatMessage; activity?: string | null }) => void): () => void;
+  /** O cliente está digitando/gravando áudio (state null = parou). */
+  onTyping(cb: (t: { conversationId: string; state: "composing" | "recording" | null }) => void): () => void;
+  onConversationDeleted(cb: (conversationId: string) => void): () => void;
 }
 
 /** Nomes dos canais de eventos (main → renderer). */
@@ -118,6 +123,8 @@ export const EVENTS = {
   navigate: "evt:navigate",
   activity: "evt:activity",
   sim: "evt:sim",
+  typing: "evt:typing",
+  conversationDeleted: "evt:conversationDeleted",
 } as const;
 
 /** Métodos invocáveis (renderer → main). O canal é "rpc:<método>". */
@@ -150,6 +157,7 @@ export const RPC_METHODS = [
   "sendAudio",
   "resendSticker",
   "deleteMessage",
+  "deleteConversation",
   "takeOver",
   "returnToAi",
   "suggestReply",

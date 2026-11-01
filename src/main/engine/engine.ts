@@ -86,6 +86,9 @@ export interface EngineEvents {
   notify: [NotifyEvent];
   aiError: [AiError];
   activity: [{ conversationId: string; label: string | null }];
+  /** O cliente está digitando/gravando áudio (null = parou). */
+  typing: [{ conversationId: string; state: "composing" | "recording" | null }];
+  conversationDeleted: [string];
   usage: [];
 }
 
@@ -325,6 +328,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   /** O contato começou/parou de digitar ou gravar áudio. */
   handleTyping(conversationId: string, state: "composing" | "recording" | "available"): void {
+    this.emit("typing", { conversationId, state: state === "available" ? null : state });
     if (state === "available") {
       if (!this.typingUntil.delete(conversationId)) return;
       // parou de digitar: se havia resposta esperando, responde logo (pequena folga para a mensagem chegar)
@@ -1066,6 +1070,16 @@ export class Engine extends EventEmitter<EngineEvents> {
     const updated = store.updateMessage(m.id, { status: "deleted" });
     this.emit("message", updated);
     return updated;
+  }
+
+  /** Apaga a conversa do app (não apaga no celular). Se o cliente escrever de novo, começa uma conversa nova. */
+  deleteConversation(conversationId: string): void {
+    if (this.running.has(conversationId)) throw new Error("A IA está respondendo esta conversa agora. Tente de novo em alguns segundos.");
+    this.cancelSchedule(conversationId);
+    this.typingUntil.delete(conversationId);
+    this.stopTyping(conversationId);
+    this.deps.store.deleteConversation(conversationId);
+    this.emit("conversationDeleted", conversationId);
   }
 
   /** O cliente (ou o celular da loja) apagou uma mensagem para todos. */

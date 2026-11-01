@@ -3,6 +3,7 @@ import type { ChatMessage } from "../../../shared/types";
 import { api } from "../lib/api";
 import { hhmm } from "../lib/format";
 import { IconFile, IconImage, IconMapPin, IconPause, IconPlay, IconRepeat } from "./Icons";
+import { ImageViewer } from "./ImageViewer";
 import { HumanTag, IaTag } from "./Tag";
 import { WaText } from "./WaText";
 
@@ -108,10 +109,19 @@ function AudioPlayer({ m }: { m: ChatMessage }) {
 
 function ImageMedia({ m }: { m: ChatMessage }) {
   const { url, loading, load } = useMedia(m.id, true);
-  if (url)
+  const [open, setOpen] = useState(false);
+  if (url) {
+    const alt = m.kind === "image" ? "Imagem enviada na conversa" : "Vídeo";
+    if (m.kind !== "image") return <img className="media-img" src={url} alt={alt} />;
     return (
-      <img className="media-img" src={url} alt={m.kind === "image" ? "Imagem enviada na conversa" : "Vídeo"} />
+      <>
+        <button className="media-zoom" onClick={() => setOpen(true)} aria-label="Ampliar foto" title="Clique para ampliar">
+          <img className="media-img" src={url} alt={alt} />
+        </button>
+        {open && <ImageViewer src={url} alt={alt} onClose={() => setOpen(false)} />}
+      </>
     );
+  }
   return (
     <button className="media-placeholder" onClick={() => void load()} disabled={loading}>
       <IconImage size={26} />

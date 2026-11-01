@@ -22,6 +22,8 @@ const api = {
   onNavigate: (cb) => subscribe(EVENTS.navigate, cb),
   onActivity: (cb) => subscribe(EVENTS.activity, cb),
   onSim: (cb) => subscribe(EVENTS.sim, cb),
+  onTyping: (cb) => subscribe(EVENTS.typing, cb),
+  onConversationDeleted: (cb) => subscribe(EVENTS.conversationDeleted, cb),
 } as NiveAtendeApi;
 
 contextBridge.exposeInMainWorld("niveAtende", api);

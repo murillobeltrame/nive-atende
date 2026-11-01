@@ -454,6 +454,8 @@ export function createMockApi(): NiveAtendeApi {
     reservation: emitter<Reservation>(),
     navigate: emitter<NavigateTarget>(),
     activity: emitter<{ conversationId: string; label: string | null }>(),
+    typing: emitter<{ conversationId: string; state: "composing" | "recording" | null }>(),
+    conversationDeleted: emitter<string>(),
     sim: emitter<{ message?: ChatMessage; activity?: string | null }>(),
   };
 
@@ -684,6 +686,12 @@ export function createMockApi(): NiveAtendeApi {
       ev.message.emit({ ...m });
       return { ...m };
     },
+    async deleteConversation(conversationId) {
+      const i = conversations.findIndex((c) => c.id === conversationId);
+      if (i >= 0) conversations.splice(i, 1);
+      for (let j = messages.length - 1; j >= 0; j--) if (messages[j]!.conversationId === conversationId) messages.splice(j, 1);
+      ev.conversationDeleted.emit(conversationId);
+    },
     async cancelReservation(id) {
       const r = reservations.find((x) => x.id === id)!;
       r.status = "cancelled";
@@ -763,6 +771,8 @@ export function createMockApi(): NiveAtendeApi {
     onNavigate: (cb) => ev.navigate.on(cb),
     onActivity: (cb) => ev.activity.on(cb),
     onSim: (cb) => ev.sim.on(cb),
+    onTyping: (cb) => ev.typing.on(cb),
+    onConversationDeleted: (cb) => ev.conversationDeleted.on(cb),
   };
   return api;
 }

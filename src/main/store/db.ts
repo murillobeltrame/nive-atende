@@ -245,6 +245,23 @@ export class Store {
     };
   }
 
+  /** Apaga a conversa do app: mensagens, mídias e anotações internas. As reservas ficam (são registro da loja). */
+  deleteConversation(id: string): void {
+    const run = this.db.prepare.bind(this.db);
+    this.db.exec("BEGIN");
+    try {
+      run("DELETE FROM media WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)").run(id);
+      run("DELETE FROM messages WHERE conversation_id = ?").run(id);
+      run("DELETE FROM identity_sessions WHERE conversation_id = ?").run(id);
+      for (const k of ["personal", "personalNotice", "offered", "followup", "avatar"]) run("DELETE FROM kv WHERE key = ?").run(`${k}:${id}`);
+      run("DELETE FROM conversations WHERE id = ?").run(id);
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
   getConversation(id: string): Conversation | null {
     const r = this.db.prepare("SELECT * FROM conversations WHERE id = ?").get(id) as Row | undefined;
     return r ? this.toConversation(r) : null;

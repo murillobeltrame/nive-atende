@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { aiConfigured } from "../../../shared/ai-catalog";
 import { Composer } from "../components/Composer";
-import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconUser, IconX } from "../components/Icons";
+import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
@@ -21,6 +21,48 @@ interface Props {
 }
 
 const avatarCache = new Map<string, string | null>();
+
+type TypingState = "composing" | "recording";
+
+/**
+ * Quem está digitando/gravando agora. O WhatsApp nem sempre avisa que parou, então cada aviso
+ * vale por alguns segundos; uma mensagem nova do cliente também encerra.
+ */
+function useTyping(): Record<string, TypingState> {
+  const [map, setMap] = useState<Record<string, TypingState>>({});
+  useEffect(() => {
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const clear = (id: string) => {
+      const t = timers.get(id);
+      if (t) clearTimeout(t);
+      timers.delete(id);
+      setMap((m) => {
+        if (!(id in m)) return m;
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+    };
+    const offTyping = api.onTyping(({ conversationId, state }) => {
+      if (!state) return clear(conversationId);
+      const t = timers.get(conversationId);
+      if (t) clearTimeout(t);
+      timers.set(conversationId, setTimeout(() => clear(conversationId), state === "recording" ? 35_000 : 15_000));
+      setMap((m) => (m[conversationId] === state ? m : { ...m, [conversationId]: state }));
+    });
+    const offMsg = api.onMessage((m) => {
+      if (m.origin === "consumidor") clear(m.conversationId);
+    });
+    return () => {
+      offTyping();
+      offMsg();
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, []);
+  return map;
+}
+
+const typingLabel = (s: TypingState) => (s === "recording" ? "gravando áudio…" : "digitando…");
 
 /** Foto de perfil pública do contato; sem foto, as iniciais. */
 function Avatar({ name, seed, small, conversationId }: { name: string; seed: string; small?: boolean; conversationId?: string }) {
@@ -173,6 +215,51 @@ function CustomerNotes({ c }: { c: Conversation }) {
   );
 }
 
+/** "Apagar conversa", com confirmação. Apaga só no app; o WhatsApp do celular continua igual. */
+function DeleteConversation({ c }: { c: Conversation }) {
+  const [step, setStep] = useState<"idle" | "confirm" | "busy">("idle");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setStep("idle");
+    setError(null);
+  }, [c.id]);
+  const run = async () => {
+    setStep("busy");
+    setError(null);
+    try {
+      await api.deleteConversation(c.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "Não foi possível apagar.");
+      setStep("confirm");
+    }
+  };
+  if (step === "idle")
+    return (
+      <button className="btn sm danger delete-conv" onClick={() => setStep("confirm")}>
+        <IconTrash size={14} />
+        Apagar conversa
+      </button>
+    );
+  return (
+    <div className="delete-confirm" role="alertdialog" aria-label="Confirmar exclusão da conversa">
+      <b>Apagar esta conversa?</b>
+      <span>
+        Some do app com todas as mensagens e fotos. No WhatsApp do celular ela continua. Se o cliente mandar mensagem de novo, começa uma
+        conversa nova. Reservas não são apagadas.
+      </span>
+      {error && <span className="delete-error">{error}</span>}
+      <div className="btn-row">
+        <button className="btn sm" onClick={() => setStep("idle")} disabled={step === "busy"}>
+          Cancelar
+        </button>
+        <button className="btn sm danger-solid" onClick={() => void run()} disabled={step === "busy"}>
+          {step === "busy" ? "Apagando…" : "Apagar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ClientPanel({ c }: { c: Conversation }) {
   return (
     <aside className="client-panel" aria-label="Dados do cliente">
@@ -222,11 +309,13 @@ function ClientPanel({ c }: { c: Conversation }) {
           <b>{usd(c.costUsd)}</b>
         </div>
       </div>
+      <div className="panel-sep" />
+      <DeleteConversation c={c} />
     </aside>
   );
 }
 
-function ChatView({ conversation }: { conversation: Conversation }) {
+function ChatView({ conversation, typing }: { conversation: Conversation; typing?: TypingState }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -262,7 +351,7 @@ function ChatView({ conversation }: { conversation: Conversation }) {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, conversation.id]);
+  }, [messages.length, conversation.id, !!typing]);
 
   const sorted = useMemo(() => [...messages].sort((a, b) => a.createdAt - b.createdAt), [messages]);
 
@@ -288,7 +377,7 @@ function ChatView({ conversation }: { conversation: Conversation }) {
       <header className="chat-head">
         <div className="chat-head-id">
           <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
-          <ContactHeader conversation={conversation} ident={ident} />
+          <ContactHeader conversation={conversation} ident={ident} typing={typing} />
         </div>
         {conversation.state !== "ignorado" &&
           (humanMode ? (
@@ -323,6 +412,16 @@ function ChatView({ conversation }: { conversation: Conversation }) {
             </Fragment>
           );
         })}
+        {typing && (
+          <div className="customer-typing" role="status">
+            <span className="ai-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            Cliente {typingLabel(typing)}
+          </div>
+        )}
         <AiActivity conversationId={conversation.id} />
         <div ref={endRef} />
       </div>
@@ -332,7 +431,7 @@ function ChatView({ conversation }: { conversation: Conversation }) {
 }
 
 /** Nome no topo da conversa, com "~nome do perfil" e o botão de renomear/salvar contato. */
-function ContactHeader({ conversation, ident }: { conversation: Conversation; ident: string }) {
+function ContactHeader({ conversation, ident, typing }: { conversation: Conversation; ident: string; typing?: TypingState }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [toPhone, setToPhone] = useState(true);
@@ -406,8 +505,14 @@ function ContactHeader({ conversation, ident }: { conversation: Conversation; id
         </button>
       </div>
       <div className="chat-head-sub">
-        {formatPhone(conversation.phone)}
-        {showPush && <span className="push-name"> · ~{conversation.pushName}</span>} · {ident}
+        {typing ? (
+          <span className="typing-text">{typingLabel(typing)}</span>
+        ) : (
+          <>
+            {formatPhone(conversation.phone)}
+            {showPush && <span className="push-name"> · ~{conversation.pushName}</span>} · {ident}
+          </>
+        )}
       </div>
       {note && (
         <div className="chat-head-note" role="status">
@@ -458,6 +563,7 @@ export function ConversationsPage({
   const [q, setQ] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [, setTick] = useState(0);
+  const typing = useTyping();
 
   const reload = useCallback(async () => {
     const list = await api.listConversations(filter, q);
@@ -509,6 +615,18 @@ export function ConversationsPage({
     });
     return off;
   }, []);
+
+  // conversa apagada: sai da lista e, se estava aberta, fecha
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
+  useEffect(
+    () =>
+      api.onConversationDeleted((id) => {
+        setItems((prev) => prev.filter((x) => x.id !== id));
+        if (selectedRef.current === id) onSelect(null);
+      }),
+    [onSelect],
+  );
 
   const needsSetup =
     settings &&
@@ -565,8 +683,14 @@ export function ConversationsPage({
                       <span className={`conv-time ${hot ? "hot" : ""}`}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div className="conv-preview">
-                      {previewPrefix(c.lastOrigin)}
-                      {c.lastPreview}
+                      {typing[c.id] ? (
+                        <span className="typing-text">{typingLabel(typing[c.id]!)}</span>
+                      ) : (
+                        <>
+                          {previewPrefix(c.lastOrigin)}
+                          {c.lastPreview}
+                        </>
+                      )}
                     </div>
                     <div className="conv-meta">
                       <StateTag state={c.state} />
@@ -586,7 +710,7 @@ export function ConversationsPage({
       </div>
       {selected ? (
         <>
-          <ChatView conversation={selected} />
+          <ChatView conversation={selected} typing={typing[selected.id]} />
           <ClientPanel c={selected} />
         </>
       ) : needsSetup && settings ? (

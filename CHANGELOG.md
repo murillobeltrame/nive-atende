@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.3.4 — 2026-10-31
+
+- **Cliente digitando:** quando o cliente está digitando ou gravando áudio, aparece "digitando…" / "gravando áudio…" na lista de conversas, no topo da conversa e embaixo da última mensagem (WhatsApp embutido e Evolution).
+- **"Digitando…" da IA mais confiável:** o app reafirma que está "disponível" antes de cada "digitando…", então o cliente vê a IA digitando do começo ao fim, enquanto ela busca e pensa. Depois de responder, volta a ficar indisponível (a loja não fica "online" o tempo todo).
+- **Zoom na foto:** clique na foto para abrir em tela cheia; roda do mouse/pinça ou clique amplia, arrastar move, duplo clique volta, Esc fecha.
+- **Apagar conversa:** botão no painel do cliente, com confirmação. Apaga do app as mensagens e fotos (no celular continua); reservas ficam.
+
 ## v0.3.3 — 2026-10-31
 
 - **A IA conhece o catálogo da loja:** o app lê os produtos com estoque na API Nive (atualiza a cada 3 horas) e passa para a IA quais tipos de produto a loja vende de verdade. Ela não oferece mais categorias que a loja não tem (ex.: roupa numa loja de perfumes).

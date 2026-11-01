@@ -232,6 +232,14 @@ export function parseWebhook(body: unknown): EvolutionEvent[] {
     const id = String(key.id ?? o.id ?? "");
     const remoteJid = String(key.remoteJid ?? o.remoteJid ?? "");
     if (id && remoteJid) out.push({ type: "revoke", remoteJid, waMessageId: id });
+  } else if (event === "presence.update") {
+    const o = asObj(data);
+    const jid = String(o.id ?? "");
+    if (jid && !isGroupJid(jid)) {
+      const states = Object.values(asObj(o.presences)).map((x) => String(asObj(x).lastKnownPresence ?? ""));
+      const state = states.includes("composing") ? "composing" : states.includes("recording") ? "recording" : "available";
+      out.push({ type: "typing", jid, state });
+    }
   } else if (event === "messages.update") {
     const list = Array.isArray(data) ? data : [data];
     for (const item of list) {

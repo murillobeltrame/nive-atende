@@ -463,9 +463,16 @@ export class BaileysService implements WhatsAppService {
   async sendPresence(jid: string, presence: "composing" | "recording" | "paused"): Promise<void> {
     try {
       if (!this.sock || this.state !== "open") return;
-      // o WhatsApp só mostra "digitando…" de quem está "disponível" e inscrito na conversa
-      if (presence !== "paused" && !this.presenceSubscribed.has(jid)) {
-        await this.sock.sendPresenceUpdate("available");
+      if (presence === "paused") {
+        await this.sock.sendPresenceUpdate("paused", jid);
+        // volta a ficar "indisponível" (só este aparelho): não deixa a loja "online" o tempo todo
+        await this.sock.sendPresenceUpdate("unavailable");
+        return;
+      }
+      // o WhatsApp só mostra "digitando…" de quem está "disponível" e inscrito na conversa.
+      // Reafirma o "disponível" a cada vez: o celular da loja derruba esse estado quando fecha o app.
+      await this.sock.sendPresenceUpdate("available");
+      if (!this.presenceSubscribed.has(jid)) {
         await this.sock.presenceSubscribe(jid).catch(() => undefined);
         this.presenceSubscribed.add(jid);
         if (this.presenceSubscribed.size > 500) this.presenceSubscribed.clear();

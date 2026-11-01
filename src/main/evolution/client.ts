@@ -141,7 +141,7 @@ export class EvolutionClient implements WhatsAppGateway {
         url,
         byEvents: false,
         base64: true,
-        events: ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE", "MESSAGES_DELETE"],
+        events: ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE", "MESSAGES_DELETE", "PRESENCE_UPDATE"],
       },
     });
   }
