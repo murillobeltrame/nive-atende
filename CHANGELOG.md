@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.3.5 — 2026-11-03
+
+- **Produto pelo apelido:** quando o cliente pede pelo apelido ou pelo jeito do frasco ("o perfume da abelhinha", "o do frasco dourado", "parecido com o X"), a IA pensa no produto real e busca por ele. Se não souber, lê os nomes de todo o catálogo daquele tipo e reconhece qual é, confirmando com o cliente e mandando a foto, antes de oferecer outras opções.
+- **A IA aprende os apelidos:** quando o cliente confirma qual era o produto, ela guarda o apelido e, na próxima conversa, já traz o produto certo de primeira.
+- **Configurações → Apelidos de produtos:** veja os apelidos que a IA aprendeu, cadastre os que você conhece (ex.: abelhinha → Atheeri) e remova os errados.
+- **Nome escrito errado:** a busca acha o produto mesmo escrito de ouvido ou com erro de digitação ("aterri" → Atheeri).
+
 ## v0.3.4 — 2026-10-31
 
 - **Cliente digitando:** quando o cliente está digitando ou gravando áudio, aparece "digitando…" / "gravando áudio…" na lista de conversas, no topo da conversa e embaixo da última mensagem (WhatsApp embutido e Evolution).
