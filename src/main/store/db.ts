@@ -523,7 +523,7 @@ export class Store {
     };
   }
 
-  insertReservation(r: Omit<Reservation, "id" | "createdAt"> & { customerId: string | null }): Reservation {
+  insertReservation(r: Omit<Reservation, "id" | "createdAt"> & { customerId: string | null; createdAt?: number }): Reservation {
     const id = randomUUID();
     this.db
       .prepare(
@@ -534,7 +534,7 @@ export class Store {
       .run(
         id, r.conversationId, r.customerId, r.customerName, r.phone, r.productId, r.variantId,
         r.productDescription, r.variantLabel, r.quantity, r.unitPrice, r.saleId, r.orderNumber,
-        r.status, r.expiresAt, Date.now(), r.error, r.customerStatus, JSON.stringify(r.customerCandidates ?? []),
+        r.status, r.expiresAt, r.createdAt ?? Date.now(), r.error, r.customerStatus, JSON.stringify(r.customerCandidates ?? []),
       );
     return this.getReservation(id)!;
   }

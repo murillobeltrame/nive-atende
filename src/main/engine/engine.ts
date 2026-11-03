@@ -1313,6 +1313,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     // com cadastro parecido, mesmo na reserva automática o lojista confirma quem é antes de lançar
     const auto = s.reservation.autoEnabled && who.customerStatus !== "confirm";
     let r = store.insertReservation({
+      createdAt: this.now(),
       conversationId,
       customerId: who.customerId,
       customerName: who.customerName ?? conv.customerName ?? conv.displayName,
