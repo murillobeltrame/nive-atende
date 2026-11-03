@@ -2,6 +2,8 @@
 // que a loja não tem. Lido da API Nive, guardado no banco local e atualizado de tempos em tempos.
 import type { NiveApi, NiveProduct } from "../nive/client";
 import type { Store } from "../store/db";
+import { prettyName } from "./format";
+import { saveCatalogIndex } from "./nicknames";
 
 const KEY = "catalogSummary";
 /** Depois disso, o resumo é atualizado em segundo plano. */
@@ -88,6 +90,14 @@ export class CatalogSummary {
         }
         const text = summarizeCatalog(all, partial);
         this.store.setKv(KEY, { at: this.now(), text } satisfies Cached);
+        // nomes de tudo que tem estoque: a IA reconhece apelidos e nomes escritos errado por aqui
+        saveCatalogIndex(
+          this.store,
+          all
+            .filter((p) => p.active && inStock(p))
+            .map((p) => ({ id: p.id, nome: prettyName(p.description), marca: p.brand?.trim() || null, tipo: productKind(p) })),
+          this.now(),
+        );
         return text;
       } catch (e) {
         console.warn("[catálogo] não foi possível montar o resumo:", (e as Error).message);

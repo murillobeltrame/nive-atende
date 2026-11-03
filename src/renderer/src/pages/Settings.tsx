@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { AiProviderId, AppSettings, SecretKey, TestResult } from "../../../shared/types";
+import type { AiProviderId, AppSettings, ProductNickname, SecretKey, TestResult } from "../../../shared/types";
 import { PROVIDER_IDS, PROVIDERS, TIER_LABEL, TIER_ORDER, type CatalogModel } from "../../../shared/ai-catalog";
 import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
 import { api } from "../lib/api";
@@ -11,6 +11,7 @@ export type SettingsSection =
   | "reserva"
   | "contas"
   | "personalidade"
+  | "apelidos"
   | "audio"
   | "app";
 
@@ -21,6 +22,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: "reserva", label: "Reserva" },
   { id: "contas", label: "Contas dos clientes" },
   { id: "personalidade", label: "Personalidade" },
+  { id: "apelidos", label: "Apelidos de produtos" },
   { id: "audio", label: "Áudio" },
   { id: "app", label: "Programa" },
 ];
@@ -1199,6 +1201,81 @@ function PersonalitySection({ settings, onSettings }: Pick<Props, "settings" | "
   );
 }
 
+/** "O perfume da abelhinha" → Atheeri: apelidos que os clientes usam para os produtos. */
+function NicknamesSection() {
+  const [list, setList] = useState<ProductNickname[]>([]);
+  const [apelido, setApelido] = useState("");
+  const [termo, setTermo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api.listNicknames().then(setList).catch(() => setList([]));
+  }, []);
+  const add = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setList(await api.addNickname(apelido.trim(), termo.trim()));
+      setApelido("");
+      setTermo("");
+    } catch (e) {
+      setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sorted = [...list].sort((a, b) => a.apelido.localeCompare(b.apelido, "pt-BR"));
+  return (
+    <>
+      <div className="card">
+        <h2 className="card-title">Como os clientes chamam os produtos</h2>
+        <p className="card-sub">
+          Muita gente pede pelo apelido (“o perfume da abelhinha”, “o azulzinho”, “o do frasco dourado”) ou escreve o nome errado.
+          A IA já tenta reconhecer sozinha pelo que sabe do produto e, quando o cliente confirma, guarda o apelido aqui. Você também pode
+          cadastrar os que conhece.
+        </p>
+        <div className="stack">
+          <div className="grid-2">
+            <Text label="Apelido" value={apelido} placeholder="ex.: abelhinha" onChange={setApelido} />
+            <Text label="Nome do produto no sistema" value={termo} placeholder="ex.: Atheeri" onChange={setTermo} hint="Pode ser só a parte do nome que identifica o produto." />
+          </div>
+          <div className="btn-row">
+            <button className="btn primary sm" disabled={busy || !apelido.trim() || !termo.trim()} onClick={() => void add()}>
+              Adicionar apelido
+            </button>
+          </div>
+          {error && <small style={{ color: "var(--red-text)" }}>{error}</small>}
+        </div>
+      </div>
+      <div className="card">
+        <h2 className="card-title">Apelidos conhecidos ({list.length})</h2>
+        {sorted.length ? (
+          <ul className="notes">
+            {sorted.map((n) => (
+              <li key={n.apelido}>
+                <span>
+                  <b>“{n.apelido}”</b> → {n.termo}
+                  {n.origem === "ia" && <small style={{ color: "var(--muted)" }}> · aprendido numa conversa</small>}
+                </span>
+                <button
+                  className="icon-btn sm"
+                  aria-label={`Remover: ${n.apelido}`}
+                  title="Remover"
+                  onClick={() => void api.removeNickname(n.apelido).then(setList)}
+                >
+                  <IconX size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="card-sub" style={{ margin: 0 }}>Nenhum ainda. Os que a IA aprender nas conversas aparecem aqui.</p>
+        )}
+      </div>
+    </>
+  );
+}
+
 function AudioSection({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
   const initial = settings.audio;
   const [d, setD] = useDraft(initial);
@@ -1318,6 +1395,7 @@ export function SettingsPage(props: Props) {
           {section === "reserva" && <ReservationSection settings={settings} onSettings={onSettings} />}
           {section === "contas" && <AccountsSection settings={settings} onSettings={onSettings} />}
           {section === "personalidade" && <PersonalitySection settings={settings} onSettings={onSettings} />}
+          {section === "apelidos" && <NicknamesSection />}
           {section === "audio" && <AudioSection settings={settings} onSettings={onSettings} />}
           {section === "app" && <AppSection settings={settings} onSettings={onSettings} />}
         </div>

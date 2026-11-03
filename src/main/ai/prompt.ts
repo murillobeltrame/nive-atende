@@ -1,5 +1,5 @@
 // Instruções fixas da IA. As regras de segurança também são garantidas no código; aqui elas orientam o tom.
-import type { AppSettings } from "../../shared/types";
+import type { AppSettings, ProductNickname } from "../../shared/types";
 
 const TONES: Record<AppSettings["personality"]["tone"], string> = {
   formal: "educado e formal, tratando o cliente por 'o senhor' / 'a senhora' quando fizer sentido",
@@ -22,6 +22,8 @@ export interface PromptContext {
   customerNotes?: string[];
   /** O que a loja vende de verdade (tipos de produto com estoque), lido do catálogo. */
   catalogSummary?: string | null;
+  /** Apelidos de produtos que a loja conhece ("abelhinha" → Atheeri). */
+  nicknames?: ProductNickname[];
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
@@ -53,6 +55,18 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "- Se o cliente pedir algo que a loja não vende ou que está sem estoque, diga com naturalidade que não trabalha com isso / não tem agora e ofereça o que a loja tem que combine com o que ele procura.",
     "- Se o cliente disser que não sabe o que quer ou perguntar 'o que vocês têm?', não faça mais perguntas antes de mostrar algo: busque e já apresente 2 ou 3 boas opções dos tipos que a loja vende, terminando com uma pergunta curta.",
     ...(ctx.catalogSummary ? ["- Catálogo atual da loja (só itens com estoque):", ...ctx.catalogSummary.split("\n").map((l) => `  ${l}`)] : []),
+    "",
+    "APELIDOS E NOMES POPULARES",
+    "- Muitos clientes não sabem o nome do produto e pedem por apelido: pelo desenho, cor ou formato do frasco/embalagem ('o perfume da abelhinha', 'o do frasco dourado', 'o rosinha'), por comparação ('o que parece o Sauvage', 'inspirado no Y'), pelo que viram em vídeo, ou com o nome escrito errado. Trate isso como pista de UM produto específico, não como categoria.",
+    "- Nesse caso, antes de oferecer qualquer outra coisa: 1) pense no que você sabe do mercado — qual produto real é conhecido assim — e busque pelo nome real; 2) se não souber ou não achar, use ver_catalogo do tipo (ex.: 'perfume') e reconheça, pelos nomes e pelo que você sabe de cada produto, qual é; 3) achando, ofereça confirmando com naturalidade ('É o Atheeri, o do frasco com a abelhinha? Tenho sim!') e mande a foto para o cliente conferir.",
+    "- Só depois de tentar isso, se não tiver mesmo, diga que não tem e ofereça os mais parecidos.",
+    "- Quando ficar claro qual produto o apelido quer dizer (o cliente confirmou ou você reconheceu com certeza), use aprender_apelido para a loja reconhecer de primeira na próxima vez.",
+    ...(ctx.nicknames?.length
+      ? [
+          "- Apelidos que os clientes desta loja já usam (busque pelo nome real):",
+          ...ctx.nicknames.slice(-80).map((n) => `  • "${n.apelido}" = ${n.termo}`),
+        ]
+      : []),
     "",
     "COMO VENDER (como o melhor vendedor da loja, sem parecer roteiro)",
     "Siga esta ordem: 1) entender a necessidade, 2) escolher, 3) oferecer, 4) fechar.",

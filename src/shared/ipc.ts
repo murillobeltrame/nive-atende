@@ -10,6 +10,7 @@ import type {
   DailySummary,
   DeepPartial,
   NavigateTarget,
+  ProductNickname,
   QrState,
   Reservation,
   SecretKey,
@@ -75,6 +76,11 @@ export interface NiveAtendeApi {
   /** Preferências que a IA anotou sobre o cliente. */
   getCustomerNotes(conversationId: string): Promise<string[]>;
   removeCustomerNote(conversationId: string, note: string): Promise<string[]>;
+
+  /** Apelidos de produtos ("abelhinha" → Atheeri): cadastrados pelo lojista ou aprendidos pela IA. */
+  listNicknames(): Promise<ProductNickname[]>;
+  addNickname(apelido: string, termo: string): Promise<ProductNickname[]>;
+  removeNickname(apelido: string): Promise<ProductNickname[]>;
 
   // simulador (conversa de teste com a IA, sem WhatsApp)
   simMessages(): Promise<ChatMessage[]>;
@@ -163,6 +169,9 @@ export const RPC_METHODS = [
   "suggestReply",
   "getCustomerNotes",
   "removeCustomerNote",
+  "listNicknames",
+  "addNickname",
+  "removeNickname",
   "simMessages",
   "simSend",
   "simReset",

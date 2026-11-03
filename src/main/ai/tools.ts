@@ -6,6 +6,7 @@ import type { Store } from "../store/db";
 import type { AiToolDef } from "./openai";
 import { formatBRL, guardText } from "../engine/guard";
 import { prettyName } from "./format";
+import { catalogIndex, coreWords, filterCatalog, fuzzySearch, listNicknames, matchNicknames } from "./nicknames";
 
 export const TOOL_DEFS: Record<string, AiToolDef> = {
   buscar_produto: {
@@ -17,6 +18,37 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
       type: "object",
       properties: { termo: { type: "string", description: "Palavra-chave do produto, ex.: 'perfume', 'tênis runner', 'bolsa couro'" } },
       required: ["termo"],
+      additionalProperties: false,
+    },
+  },
+  ver_catalogo: {
+    name: "ver_catalogo",
+    description:
+      "Lista os NOMES de todos os produtos com estoque de um tipo e/ou marca (sem preço). Use quando o cliente chamar um produto por apelido, " +
+      "pelo jeito do frasco/embalagem ('o da abelhinha', 'o do frasco dourado'), por comparação ('parecido com o X') ou com o nome errado, e a busca direta não trouxer o produto: " +
+      "leia os nomes e use o que você sabe de cada um (frasco, cor, cheiro, fama) para reconhecer qual é. Depois use buscar_produto com o nome escolhido para ver preço e estoque.",
+    parameters: {
+      type: "object",
+      properties: {
+        tipo: { type: "string", description: "Tipo de produto, ex.: 'perfume', 'body splash', 'tênis'. Vazio para todos." },
+        marca: { type: "string", description: "Marca, ex.: 'Lattafa'. Vazio para todas." },
+      },
+      required: ["tipo", "marca"],
+      additionalProperties: false,
+    },
+  },
+  aprender_apelido: {
+    name: "aprender_apelido",
+    description:
+      "Guarda um apelido que o cliente usou para um produto (ex.: 'abelhinha' para o Atheeri), para a loja reconhecer de primeira nas próximas conversas. " +
+      "Use só quando ficou claro qual é o produto (o cliente confirmou, ou ele pediu com o apelido e você reconheceu com certeza). Não use para nomes genéricos como 'perfume' ou 'shampoo'.",
+    parameters: {
+      type: "object",
+      properties: {
+        apelido: { type: "string", description: "Como o cliente chamou, curto, ex.: 'abelhinha', 'azulzinho', 'frasco dourado'" },
+        produto_id: { type: "string", description: "produto_id devolvido por buscar_produto" },
+      },
+      required: ["apelido", "produto_id"],
       additionalProperties: false,
     },
   },
@@ -99,6 +131,8 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
 
 const ACTIVITY: Record<string, string> = {
   buscar_produto: "Buscando produtos no sistema…",
+  ver_catalogo: "Conferindo o catálogo da loja…",
+  aprender_apelido: "Anotando o apelido do produto…",
   mostrar_foto_produto: "Separando a foto do produto…",
   reservar_produto: "Reservando o produto no sistema…",
   identificar_cliente: "Conferindo o cadastro do cliente…",
@@ -110,14 +144,14 @@ const ACTIVITY: Record<string, string> = {
 };
 
 export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
-  const names = ["buscar_produto"];
+  const names = ["buscar_produto", "ver_catalogo"];
   if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto");
   if (settings.accounts.enabled) {
     names.push("consultar_contas");
     if (!readOnly) names.push("identificar_cliente", "confirmar_data_nascimento");
   }
   if (!readOnly && settings.attendance.backInStock !== false) names.push("avisar_quando_chegar");
-  if (!readOnly) names.push("anotar_preferencia", "transferir_para_humano");
+  if (!readOnly) names.push("anotar_preferencia", "aprender_apelido", "transferir_para_humano");
   return names.map((n) => TOOL_DEFS[n]!);
 }
 
@@ -133,6 +167,8 @@ export interface ToolContext {
   offered?: Set<string>;
   /** Registra "avise-me quando chegar". */
   addWaitlist?: (productId: string, description: string) => void;
+  /** Guarda um apelido de produto para a loja toda (não existe no modo só leitura). */
+  learnNickname?: (apelido: string, termo: string, productId: string) => boolean;
   /** Guarda uma preferência do cliente para as próximas conversas. */
   addNote?: (note: string) => void;
   /** Avisa a interface o que a IA está fazendo agora ("Buscando produtos…"). */
@@ -203,7 +239,24 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
   switch (name) {
     case "buscar_produto": {
       const termo = str(args.termo).slice(0, 120);
-      const products = await ctx.nive.searchProducts(termo, 20);
+      const found = new Map<string, NiveProduct>();
+      const add = (list: Array<NiveProduct | null>) => {
+        for (const p of list) if (p && p.active && !found.has(p.id)) found.set(p.id, p);
+      };
+      // 1) apelidos conhecidos ("abelhinha" → Atheeri) vêm primeiro
+      const apelidos = matchNicknames(listNicknames(ctx.store), termo).slice(0, 3);
+      for (const a of apelidos) {
+        if (a.produtoId) add([await ctx.nive.getProduct(a.produtoId).catch(() => null)]);
+        add(await ctx.nive.searchProducts(a.termo, 5));
+      }
+      // 2) busca normal no ERP
+      add(await ctx.nive.searchProducts(termo, 20));
+      // 3) poucos resultados: busca tolerante a erro de digitação no índice do catálogo
+      if (found.size < 3) {
+        const extra = fuzzySearch(catalogIndex(ctx.store), termo, 5).filter((e) => !found.has(e.id));
+        for (const e of extra) add([await ctx.nive.getProduct(e.id).catch(() => null)]);
+      }
+      const products = [...found.values()];
       const view = products.map((p) => {
         const variacoes = p.variants.map((v) => {
           const reserved = ctx.store.reservedQuantity(v.id, ctx.now());
@@ -217,8 +270,16 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       const soldOut = view.filter((x) => x.total <= 0);
       state.actions.push({ label: `Buscou “${termo}” → ${inStock.length} com estoque${soldOut.length ? `, ${soldOut.length} esgotado(s)` : ""}`, kind: "info" });
       if (!products.length)
-        return { resultado: "NENHUM_PRODUTO", instrucao: "Tente outro termo mais amplo ou sinônimo antes de dizer que não tem. Se continuar sem nada, diga que não encontrou e ofereça ajudar com outra coisa." };
+        return {
+          resultado: "NENHUM_PRODUTO",
+          instrucao:
+            "Se o cliente usou um apelido ou descreveu o produto (desenho, cor, frasco, 'parecido com'), pense no nome real e busque por ele, ou use ver_catalogo do tipo para reconhecer pelo nome. " +
+            "Senão, tente outro termo mais amplo ou sinônimo. Só diga que não tem depois disso.",
+        };
       return {
+        ...(apelidos.length
+          ? { apelido_conhecido: apelidos.map((a) => `"${a.apelido}" é como os clientes chamam: ${a.termo}`).join("; ") }
+          : {}),
         total_com_estoque: inStock.length,
         produtos: inStock.slice(0, 15).map(({ p, variacoes }) => {
           state.products.set(p.id, p);
@@ -247,6 +308,39 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
             }
           : {}),
       };
+    }
+
+    case "ver_catalogo": {
+      const items = catalogIndex(ctx.store);
+      if (!items.length) return { resultado: "CATALOGO_INDISPONIVEL", instrucao: "Use buscar_produto com termos amplos e com os nomes reais que você imagina." };
+      const list = filterCatalog(items, str(args.tipo).slice(0, 60), str(args.marca).slice(0, 60));
+      state.actions.push({ label: `Conferiu o catálogo${str(args.tipo) ? ` de “${str(args.tipo)}”` : ""} → ${list.length} item(ns)`, kind: "info" });
+      if (!list.length) return { resultado: "NENHUM_PRODUTO", instrucao: "Tente um tipo mais amplo (ex.: 'perfume') ou deixe o tipo vazio e filtre pela marca." };
+      const MAX = 200;
+      return {
+        total: list.length,
+        produtos: list.slice(0, MAX).map((e) => ({ produto_id: e.id, nome: e.nome, ...(e.marca ? { marca: e.marca } : {}) })),
+        ...(list.length > MAX ? { obs: `Mostrando ${MAX} de ${list.length}. Filtre pela marca ou por um tipo mais específico para ver o resto.` } : {}),
+        instrucao:
+          "Reconheça pelo que você sabe de cada produto qual o cliente quis dizer. Achando, use buscar_produto com o nome para ver preço e estoque, " +
+          "e ofereça confirmando com naturalidade (ex.: 'É o Atheeri, o do frasco com a abelhinha?'), com a foto se tiver.",
+      };
+    }
+
+    case "aprender_apelido": {
+      const id = str(args.produto_id);
+      const apelido = str(args.apelido).slice(0, 60);
+      // só produto que a IA viu de verdade nesta conversa
+      const p = state.products.get(id) ?? (ctx.offered?.has(id) ? await ctx.nive.getProduct(id) : null);
+      if (!p) return { resultado: "IGNORADO", instrucao: "Busque o produto antes (buscar_produto) e use o produto_id devolvido." };
+      const nome = prettyName(p.description);
+      // "perfume" não é apelido: precisa de alguma palavra que não esteja no nome/tipo do produto
+      const own = new Set(coreWords(`${nome} ${p.brand ?? ""} ${p.category ?? ""} perfume colonia body splash produto`));
+      const meaningful = coreWords(apelido).filter((w) => !own.has(w));
+      if (!meaningful.length || /\d[\d\s.()-]{5,}\d/.test(apelido) || !guardText(apelido).safeText.trim()) return { resultado: "IGNORADO" };
+      const ok = ctx.learnNickname?.(guardText(apelido).safeText, nome, p.id) ?? false;
+      if (ok) state.actions.push({ label: `Aprendeu o apelido “${apelido}” → ${nome}`, kind: "info" });
+      return { resultado: ok ? "ANOTADO" : "IGNORADO", instrucao: "Continue a conversa normalmente, sem dizer que anotou." };
     }
 
     case "mostrar_foto_produto": {

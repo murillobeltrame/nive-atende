@@ -160,6 +160,18 @@ export type Tone = "formal" | "proximo" | "descontraido";
 export type SecondFactor = "birthdate" | "restricted";
 export type NotifyMode = "humano" | "todas" | "nenhuma";
 
+/** Apelido que os clientes usam para um produto ("o da abelhinha" → "Atheeri"). */
+export interface ProductNickname {
+  /** Como o cliente chama, ex.: "abelhinha", "o azulzinho". */
+  apelido: string;
+  /** Nome real do produto (o que a IA busca no catálogo). */
+  termo: string;
+  /** "loja" = cadastrado pelo lojista; "ia" = aprendido numa conversa. */
+  origem: "loja" | "ia";
+  produtoId: string | null;
+  criadoEm: number;
+}
+
 export interface AppSettings {
   /** apiKeyEnd: últimos 4 caracteres da chave salva (para conferência), ou null. */
   nive: { baseUrl: string; storeSlug: string; hasApiKey: boolean; apiKeyEnd: string | null };

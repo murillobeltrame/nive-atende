@@ -16,6 +16,8 @@ import type { InboundMessage } from "../evolution/parse";
 import { AiError, estimateChatCost, estimateTranscriptionCost, type AiMessage, type AiProvider } from "../ai/openai";
 import { buildSystemPrompt } from "../ai/prompt";
 import { CatalogSummary } from "../ai/catalog";
+import { addNickname, listNicknames, removeNickname } from "../ai/nicknames";
+import type { ProductNickname } from "../../shared/types";
 import { newRunState, runTool, toolsFor, type ToolRunState } from "../ai/tools";
 import type { Transcoder } from "../audio/transcode";
 import { IdentityService } from "./identity";
@@ -703,6 +705,22 @@ export class Engine extends EventEmitter<EngineEvents> {
     return { day: localDay(from), ...nums, aiReplies: usage?.aiReplies ?? 0, humanReplies: usage?.humanReplies ?? 0, costUsd: usage?.costUsd ?? 0, waitlist: waiting };
   }
 
+  // ---------------------------------------------------------------- apelidos de produtos
+  listNicknames(): ProductNickname[] {
+    return listNicknames(this.deps.store);
+  }
+
+  /** Lojista cadastra: "abelhinha" → "Atheeri". */
+  addNickname(apelido: string, termo: string): ProductNickname[] {
+    const ok = addNickname(this.deps.store, { apelido, termo, origem: "loja" }, this.now());
+    if (!ok) throw new Error("Escreva o apelido e o nome do produto (pelo menos 3 letras cada).");
+    return this.listNicknames();
+  }
+
+  removeNickname(apelido: string): ProductNickname[] {
+    return removeNickname(this.deps.store, apelido);
+  }
+
   // ---------------------------------------------------------------- memória do cliente
   getCustomerNotes(conversationId: string): string[] {
     return (this.deps.store.getKv<Array<{ at: number; text: string }>>(`notes:${conversationId}`) ?? []).map((n) => n.text);
@@ -905,6 +923,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       storeExamples: this.storeExamples(),
       customerNotes: this.getCustomerNotes(conversationId),
       catalogSummary: await this.catalog.get(),
+      nicknames: listNicknames(store),
     });
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
     if (extraInstruction) messages.push({ role: "system", content: extraInstruction });
@@ -936,6 +955,8 @@ export class Engine extends EventEmitter<EngineEvents> {
             now: this.now,
             offered: this.getOffered(conversationId),
             addNote: (note) => !readOnly && this.addCustomerNote(conversationId, note),
+            learnNickname: (apelido, termo, productId) =>
+              !readOnly && Boolean(addNickname(store, { apelido, termo, origem: "ia", produtoId: productId }, this.now())),
             addWaitlist: (productId, description) => !readOnly && this.addWaitlist(conversationId, productId, description),
             activity: (label) => !readOnly && this.setActivity(conversationId, label),
             reserve: (input) => this.createReservation(conversationId, input),

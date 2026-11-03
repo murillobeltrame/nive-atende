@@ -12,7 +12,7 @@ import { type SettingsSection, SettingsPage } from "./pages/Settings";
 import { UsagePage } from "./pages/Usage";
 import { SimulatorPage } from "./pages/Simulator";
 
-const SECTION_IDS: SettingsSection[] = ["conexoes", "ia", "atendimento", "reserva", "contas", "personalidade", "audio", "app"];
+const SECTION_IDS: SettingsSection[] = ["conexoes", "ia", "atendimento", "reserva", "contas", "personalidade", "apelidos", "audio", "app"];
 
 function readInitialRoute(): { page: Page; section: SettingsSection; conversationId: string | null } {
   const p = new URLSearchParams(location.search);

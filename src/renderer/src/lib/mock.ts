@@ -9,6 +9,7 @@ import type {
   ConversationFilter,
   DeepPartial,
   NavigateTarget,
+  ProductNickname,
   QrState,
   Reservation,
   StatusSnapshot,
@@ -44,6 +45,10 @@ function deepMerge<T>(base: T, patch: unknown): T {
   }
   return out as T;
 }
+
+let mockNicknames: ProductNickname[] = [
+  { apelido: "abelhinha", termo: "Perfume Árabe Atheeri Lattafa 100 ml", origem: "ia", produtoId: null, criadoEm: Date.now() },
+];
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 
@@ -649,6 +654,17 @@ export function createMockApi(): NiveAtendeApi {
     },
     async removeCustomerNote() {
       return ["Veste M"];
+    },
+    async listNicknames() {
+      return mockNicknames.map((n) => ({ ...n }));
+    },
+    async addNickname(apelido, termo) {
+      mockNicknames.push({ apelido, termo, origem: "loja", produtoId: null, criadoEm: Date.now() });
+      return mockNicknames.map((n) => ({ ...n }));
+    },
+    async removeNickname(apelido) {
+      mockNicknames = mockNicknames.filter((n) => n.apelido !== apelido);
+      return mockNicknames.map((n) => ({ ...n }));
     },
     async simMessages() {
       return simMsgs.map((m) => ({ ...m }));
