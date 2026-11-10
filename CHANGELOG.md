@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## v0.3.9 — 2026-11-10
+
+- **Telas em largura total:** Pendências, Reservas, Consumo e Configurações usam a janela inteira (antes sobrava uma faixa vazia à direita). Nas Configurações, em janela larga, os cartões ficam lado a lado.
+- **Pendências mais úteis:** cada conversa mostra o motivo em destaque e há quanto tempo o cliente espera ("esperando há 5 min"). Novo botão **Marcar como resolvida**, que tira a conversa da lista e devolve para a IA.
+- **Contato sem nome:** a conversa mostra o telefone em vez de ficar em branco.
+- **Barra de status:** "WhatsApp desconectado" escrito certo, sem "0 mensagens aguardando", e o interruptor do atendimento automático fica apagado quando o atendimento está parado por outro motivo. "Desligado" não aparece mais em verde.
+- **Telas vazias explicam** quando uma conversa ou reserva vai aparecer ali.
+- **Menu lateral:** separador entre o dia a dia (Conversas, Pendências, Reservas) e as telas de uso eventual.
+- **Mac:** menu do programa em português.
+
 ## v0.3.8 — 2026-11-10
 
 - **O programa se atualiza sozinho (Windows):** o Nive Atende procura versão nova ao abrir e a cada 4 horas, baixa em segundo plano e mostra no topo da tela o aviso "Nova versão pronta" com o botão **Atualizar agora**. Ele fecha, instala e abre de novo em alguns segundos. Se você fechar o programa antes de clicar, ele já abre atualizado da próxima vez.
