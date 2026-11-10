@@ -4,6 +4,7 @@ import { QrModal } from "./components/QrModal";
 import { type Page, Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TermsModal } from "./components/TermsModal";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { api, isMock } from "./lib/api";
 import { ConversationsPage } from "./pages/Conversations";
 import { PendingPage } from "./pages/Pending";
@@ -137,6 +138,7 @@ export function App() {
     <div className="app">
       {isMock && <div className="mock-banner">Modo de demonstração: dados de exemplo, nada é enviado.</div>}
       <StatusBar status={status} onAction={onAction} onToggleAuto={toggleAuto} busy={busyAction} />
+      <UpdateBanner />
       <div className="app-body">
         <Sidebar
           page={page}

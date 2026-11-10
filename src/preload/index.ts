@@ -24,6 +24,7 @@ const api = {
   onSim: (cb) => subscribe(EVENTS.sim, cb),
   onTyping: (cb) => subscribe(EVENTS.typing, cb),
   onConversationDeleted: (cb) => subscribe(EVENTS.conversationDeleted, cb),
+  onUpdate: (cb) => subscribe(EVENTS.update, cb),
 } as NiveAtendeApi;
 
 contextBridge.exposeInMainWorld("niveAtende", api);

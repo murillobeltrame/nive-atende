@@ -47,9 +47,13 @@ jobs:
           - os: macos-latest
             script: dist:mac
             files: release/*.dmg
+          # latest.yml e .blockmap são o que o app instalado lê para se atualizar sozinho
           - os: windows-latest
             script: dist:win
-            files: release/*.exe
+            files: |
+              release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -100,4 +104,4 @@ jobs:
           body: |
             Instaladores do Nive Atende ${{ needs.version.outputs.tag }}. O que mudou está no CHANGELOG.md.
             - Mac (Apple Silicon): arquivo .dmg. Arraste para Aplicativos. Para liberar na primeira vez, rode no Terminal: xattr -dr com.apple.quarantine "/Applications/Nive Atende.app"
-            - Windows: arquivo .exe. Se aparecer "O Windows protegeu o computador", clique em Mais informações > Executar assim mesmo.
+            - Windows: arquivo .exe. Se aparecer "O Windows protegeu o computador", clique em Mais informações > Executar assim mesmo. A partir da 0.3.8 o programa se atualiza sozinho: avisa no topo da tela e basta clicar em Atualizar agora.

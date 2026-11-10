@@ -335,6 +335,26 @@ export interface AppInfo {
   platform: string;
 }
 
+/** Situação da atualização do programa. */
+export interface UpdateState {
+  /**
+   * idle = ainda não verificou · checking = verificando · none = já está na última versão ·
+   * downloading = baixando · ready = baixada, é só reiniciar · manual = há versão nova, baixar pelo link ·
+   * error = não conseguiu verificar.
+   */
+  status: "idle" | "checking" | "none" | "downloading" | "ready" | "manual" | "error";
+  currentVersion: string;
+  /** Versão nova encontrada. */
+  version: string | null;
+  percent: number | null;
+  /** Link do instalador (quando o programa não consegue instalar sozinho). */
+  downloadUrl: string | null;
+  message: string | null;
+  checkedAt: number | null;
+  /** O programa instala sozinho neste computador (Windows)? */
+  canInstall: boolean;
+}
+
 export type NavigateTarget =
   | { page: "conversas"; filter?: ConversationFilter; conversationId?: string }
   | { page: "pendencias" }

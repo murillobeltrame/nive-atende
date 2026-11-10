@@ -13,6 +13,7 @@ import type {
   QrState,
   Reservation,
   StatusSnapshot,
+  UpdateState,
   UsageSummary,
 } from "../../../shared/types";
 
@@ -450,6 +451,19 @@ export function createMockApi(): NiveAtendeApi {
   };
   let status = statusFor(statusParam);
 
+  // ?update=ready|manual|downloading mostra o aviso de versão nova
+  const updateParam = params.get("update");
+  let mockUpdate: UpdateState = {
+    status: updateParam === "ready" || updateParam === "manual" || updateParam === "downloading" ? updateParam : "idle",
+    currentVersion: "0.1.0",
+    version: updateParam ? "0.9.9" : null,
+    percent: updateParam === "downloading" ? 42 : null,
+    downloadUrl: updateParam === "manual" ? "https://github.com/murillobeltrame/nive-atende/releases/latest" : null,
+    message: null,
+    checkedAt: null,
+    canInstall: updateParam !== "manual",
+  };
+
   const simMsgs: ChatMessage[] = [];
   const ev = {
     status: emitter<StatusSnapshot>(),
@@ -461,6 +475,7 @@ export function createMockApi(): NiveAtendeApi {
     activity: emitter<{ conversationId: string; label: string | null }>(),
     typing: emitter<{ conversationId: string; state: "composing" | "recording" | null }>(),
     conversationDeleted: emitter<string>(),
+    update: emitter<UpdateState>(),
     sim: emitter<{ message?: ChatMessage; activity?: string | null }>(),
   };
 
@@ -779,6 +794,17 @@ export function createMockApi(): NiveAtendeApi {
     async getAppInfo() {
       return { version: "0.1.0 (simulação)", platform: "browser" };
     },
+    async getUpdateState() {
+      return mockUpdate;
+    },
+    async checkForUpdate() {
+      mockUpdate = { ...mockUpdate, checkedAt: Date.now(), status: mockUpdate.status === "idle" ? "none" : mockUpdate.status };
+      ev.update.emit(mockUpdate);
+      return mockUpdate;
+    },
+    async installUpdate() {
+      return false;
+    },
     onStatus: (cb) => ev.status.on(cb),
     onConversation: (cb) => ev.conversation.on(cb),
     onMessage: (cb) => ev.message.on(cb),
@@ -789,6 +815,7 @@ export function createMockApi(): NiveAtendeApi {
     onSim: (cb) => ev.sim.on(cb),
     onTyping: (cb) => ev.typing.on(cb),
     onConversationDeleted: (cb) => ev.conversationDeleted.on(cb),
+    onUpdate: (cb) => ev.update.on(cb),
   };
   return api;
 }

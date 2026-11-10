@@ -23,6 +23,8 @@ import { StatusMonitor } from "./status/monitor";
 import { registeredToJid, digitsOnly } from "./engine/phone";
 import { initLog, log, logDir } from "./log";
 import { createSecretBox } from "./secret-box";
+import { autoUpdater } from "electron-updater";
+import { Updater, type AutoBackend } from "./updater";
 
 const isDev = Boolean(process.env.NIVE_ATENDE_DEV_URL);
 
@@ -256,6 +258,64 @@ async function applyWhatsappMode(): Promise<void> {
   await wa().start();
   void monitor.runAll(true);
 }
+
+// ------------------------------------------------------------------ atualização do programa
+/** Windows instala sozinho; no Mac (instalador sem assinatura da Apple) só avisa e abre o download. */
+const updateMode: "auto" | "manual" | "off" = !app.isPackaged ? "off" : process.platform === "win32" ? "auto" : "manual";
+
+function createAutoBackend(): AutoBackend {
+  // endereço fixo das Releases (não depende do app-update.yml gerado no empacotamento)
+  autoUpdater.setFeedURL({ provider: "github", owner: "murillobeltrame", repo: "nive-atende" });
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true; // se o lojista fechar o programa, já abre atualizado
+  autoUpdater.logger = {
+    info: (m: unknown) => log("atualizacao", "info", String(m)),
+    warn: (m: unknown) => log("atualizacao", "warn", String(m)),
+    error: (m: unknown) => log("atualizacao", "error", String(m)),
+    debug: () => undefined,
+  };
+  return {
+    check: async () => {
+      await autoUpdater.checkForUpdates();
+    },
+    install: () => {
+      quitting = true; // senão a janela só se esconde na bandeja
+      autoUpdater.quitAndInstall(true, true);
+    },
+    on: (h) => {
+      autoUpdater.on("update-available", (i) => h.available(i.version));
+      autoUpdater.on("update-not-available", () => h.none());
+      autoUpdater.on("download-progress", (p) => h.progress(p.percent));
+      autoUpdater.on("update-downloaded", (i) => h.ready(i.version));
+      autoUpdater.on("error", (e) => h.error(e));
+    },
+  };
+}
+
+const updater = new Updater({
+  currentVersion: app.getVersion(),
+  mode: updateMode,
+  platform: process.platform,
+  ...(updateMode === "auto" ? { auto: createAutoBackend() } : {}),
+  log: (level, msg, extra) => log("atualizacao", level, msg, extra),
+});
+let updateNotifiedFor: string | null = null;
+updater.on("state", (u) => {
+  send(EVENTS.update, u);
+  // avisa uma vez por versão, quando já dá para atualizar
+  if ((u.status === "ready" || u.status === "manual") && u.version && updateNotifiedFor !== u.version) {
+    updateNotifiedFor = u.version;
+    if (Notification.isSupported() && settings.get().app.notify !== "nenhuma") {
+      const n = new Notification({
+        title: `Nive Atende ${u.version} disponível`,
+        body: u.status === "ready" ? "Abra o programa e clique em Atualizar agora." : "Abra o programa para baixar a versão nova.",
+        silent: true,
+      });
+      n.on("click", () => showWindow());
+      n.show();
+    }
+  }
+});
 
 // ------------------------------------------------------------------ envio para a interface
 function send(channel: string, payload: unknown): void {
@@ -669,6 +729,9 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
     const d = logDir();
     if (d) await shell.openPath(d);
   },
+  getUpdateState: async () => updater.state(),
+  checkForUpdate: () => updater.check(),
+  installUpdate: async () => updater.install(),
 };
 
 for (const [method, fn] of Object.entries(handlers)) {
@@ -719,6 +782,9 @@ void app.whenReady().then(async () => {
   // rascunhos finalizados/excluídos no ERP
   setTimeout(syncReservations, 20_000);
   setInterval(syncReservations, 2 * 60_000);
+  // versão nova nas Releases do GitHub: confere ao abrir e a cada 4 horas
+  setTimeout(() => void updater.check(), 20_000);
+  setInterval(() => void updater.check(), 4 * 3_600_000);
   // impede que o sistema suspenda o app (não o PC) enquanto ele está aberto
   powerSaveBlocker.start("prevent-app-suspension");
 });

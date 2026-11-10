@@ -16,6 +16,7 @@ import type {
   SecretKey,
   StatusSnapshot,
   TestResult,
+  UpdateState,
   UsageSummary,
 } from "./types";
 
@@ -104,6 +105,12 @@ export interface NiveAtendeApi {
   /** Abre a pasta de registros (logs) do app. */
   openLogs(): Promise<void>;
 
+  // atualização do programa
+  getUpdateState(): Promise<UpdateState>;
+  checkForUpdate(): Promise<UpdateState>;
+  /** Fecha o programa, instala a versão já baixada e abre de novo. */
+  installUpdate(): Promise<boolean>;
+
   // eventos (retornam função para cancelar a inscrição)
   onStatus(cb: (s: StatusSnapshot) => void): () => void;
   onConversation(cb: (c: Conversation) => void): () => void;
@@ -117,6 +124,7 @@ export interface NiveAtendeApi {
   /** O cliente está digitando/gravando áudio (state null = parou). */
   onTyping(cb: (t: { conversationId: string; state: "composing" | "recording" | null }) => void): () => void;
   onConversationDeleted(cb: (conversationId: string) => void): () => void;
+  onUpdate(cb: (u: UpdateState) => void): () => void;
 }
 
 /** Nomes dos canais de eventos (main → renderer). */
@@ -131,6 +139,7 @@ export const EVENTS = {
   sim: "evt:sim",
   typing: "evt:typing",
   conversationDeleted: "evt:conversationDeleted",
+  update: "evt:update",
 } as const;
 
 /** Métodos invocáveis (renderer → main). O canal é "rpc:<método>". */
@@ -185,6 +194,9 @@ export const RPC_METHODS = [
   "openExternal",
   "getAppInfo",
   "openLogs",
+  "getUpdateState",
+  "checkForUpdate",
+  "installUpdate",
 ] as const satisfies ReadonlyArray<keyof NiveAtendeApi>;
 
 export type RpcMethod = (typeof RPC_METHODS)[number];

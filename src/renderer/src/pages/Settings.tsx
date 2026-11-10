@@ -3,6 +3,7 @@ import type { AiProviderId, AppSettings, ProductNickname, SecretKey, TestResult 
 import { PROVIDER_IDS, PROVIDERS, TIER_LABEL, TIER_ORDER, type CatalogModel } from "../../../shared/ai-catalog";
 import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
 import { api } from "../lib/api";
+import { useUpdateState } from "../components/UpdateBanner";
 
 export type SettingsSection =
   | "conexoes"
@@ -1313,6 +1314,25 @@ function AppSection({ settings, onSettings }: Pick<Props, "settings" | "onSettin
   useEffect(() => {
     void api.getAppInfo().then((i) => setVersion(i.version));
   }, []);
+  const update = useUpdateState();
+  const [checking, setChecking] = useState(false);
+  const [checkedNow, setCheckedNow] = useState(false);
+  const updateBusy = checking || update?.status === "checking";
+  const updateText = !update
+    ? ""
+    : update.status === "downloading"
+      ? `Baixando a versão ${update.version}… ${update.percent ?? 0}%`
+      : update.status === "ready"
+        ? `Versão ${update.version} pronta: clique em Atualizar agora no topo da tela.`
+        : update.status === "manual"
+          ? `Versão ${update.version} disponível: clique em Baixar no topo da tela.`
+          : !checkedNow
+            ? ""
+            : update.status === "none"
+              ? "Você já está na versão mais nova."
+              : update.status === "error"
+                ? (update.message ?? "Não foi possível verificar agora.")
+                : "";
   return (
     <>
       <div className="card">
@@ -1365,10 +1385,33 @@ function AppSection({ settings, onSettings }: Pick<Props, "settings" | "onSettin
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ app: d }))} />
       <div className="btn-row" style={{ marginTop: 20 }}>
         {version && <span className="card-sub" style={{ margin: 0 }}>Nive Atende versão {version}</span>}
+        <button
+          className="btn"
+          disabled={updateBusy || update?.status === "downloading"}
+          onClick={async () => {
+            setChecking(true);
+            try {
+              await api.checkForUpdate();
+              setCheckedNow(true);
+            } finally {
+              setChecking(false);
+            }
+          }}
+        >
+          {updateBusy ? "Verificando…" : "Verificar atualização"}
+        </button>
         <button className="btn" onClick={() => void api.openLogs()}>
           Abrir registros (para suporte)
         </button>
       </div>
+      {updateText && (
+        <p className="card-sub" role="status" style={{ marginTop: 8 }}>
+          {updateText}
+        </p>
+      )}
+      <p className="card-sub" style={{ marginTop: 8 }}>
+        O programa procura versão nova sozinho ao abrir e a cada 4 horas, e avisa no topo da tela quando houver.
+      </p>
     </>
   );
 }
