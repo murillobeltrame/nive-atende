@@ -37,6 +37,17 @@ export function listTime(ts: number): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+/** Há quanto tempo algo espera: "agora", "há 5 min", "há 2 h", "há 3 dias". */
+export function waitingSince(ts: number, now = Date.now()): string {
+  const min = Math.floor(Math.max(0, now - ts) / 60_000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? "há 1 dia" : `há ${d} dias`;
+}
+
 /** Telefone completo e legível: +55 (48) 92002-5980. */
 export function formatPhone(phone: string): string {
   const d = phone.replace(/\D/g, "");

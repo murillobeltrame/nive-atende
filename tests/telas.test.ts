@@ -21,3 +21,17 @@ describe("nome do contato", () => {
     expect(conversationName({ displayName: "  ", phone: "" })).toBe("Contato sem nome");
   });
 });
+
+import { waitingSince } from "../src/renderer/src/lib/format";
+
+describe("tempo de espera nas pendências", () => {
+  const now = new Date("2026-11-10T12:00:00-03:00").getTime();
+  it("mostra há quanto tempo o cliente espera", () => {
+    expect(waitingSince(now - 20_000, now)).toBe("agora");
+    expect(waitingSince(now - 5 * 60_000, now)).toBe("há 5 min");
+    expect(waitingSince(now - 3 * 3_600_000, now)).toBe("há 3 h");
+    expect(waitingSince(now - 26 * 3_600_000, now)).toBe("há 1 dia");
+    expect(waitingSince(now - 7 * 86_400_000, now)).toBe("há 7 dias");
+    expect(waitingSince(now + 60_000, now)).toBe("agora");
+  });
+});

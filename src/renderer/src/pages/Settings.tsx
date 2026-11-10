@@ -1429,7 +1429,7 @@ export function SettingsPage(props: Props) {
         ))}
       </nav>
       <div className="page">
-        <div className="page-pad">
+        <div className="page-pad settings-grid">
           {section === "conexoes" && (
             <ConnectionsSection settings={settings} onSettings={onSettings} onConnectWhatsapp={onConnectWhatsapp} />
           )}

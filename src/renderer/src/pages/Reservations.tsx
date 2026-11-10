@@ -69,7 +69,10 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
           </div>
         )}
         {items.length === 0 ? (
-          <div className="card empty">Nenhuma reserva ainda.</div>
+          <div className="card empty">
+            <strong>Nenhuma reserva ainda.</strong>
+            <span>As reservas aparecem aqui quando um cliente pede para separar um produto pelo WhatsApp.</span>
+          </div>
         ) : (
           <div className="table-wrap">
             <table>

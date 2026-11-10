@@ -4,7 +4,9 @@ import { type Choice, CustomerChoice, needsChoice } from "../components/Customer
 import { prettyName } from "../../../shared/format";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
-import { conversationName, listTime, money } from "../lib/format";
+import { conversationName, listTime, money, waitingSince } from "../lib/format";
+
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 interface Props {
   onOpenConversation: (id: string) => void;
@@ -32,6 +34,26 @@ export function PendingPage({ onOpenConversation }: Props) {
     };
   }, []);
 
+  // "há 5 min" precisa andar sozinho
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const resolve = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      await api.returnToAi(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const act = async (id: string, fn: (id: string) => Promise<Reservation>) => {
     setBusy(id);
@@ -58,28 +80,49 @@ export function PendingPage({ onOpenConversation }: Props) {
         )}
         <h2 className="section-h">Conversas que precisam de você ({convs.length})</h2>
         {convs.length === 0 ? (
-          <div className="card empty">Nenhuma conversa esperando por você.</div>
+          <div className="card empty">
+            <strong>Nenhuma conversa esperando por você.</strong>
+            <span>Quando a IA não souber responder, ou o cliente pedir para falar com uma pessoa, a conversa aparece aqui.</span>
+          </div>
         ) : (
           <div className="pending-list">
             {convs.map((c) => (
               <div className="pending-item" key={c.id}>
-                <span className="tag tag-need">PRECISA DE VOCÊ</span>
                 <div className="grow">
-                  <div className="title">{c.customerName ?? conversationName(c)}</div>
+                  <div className="title">
+                    {c.customerName ?? conversationName(c)}
+                    <span className="pending-wait" title={new Date(c.lastMessageAt).toLocaleString("pt-BR")}>
+                      esperando {waitingSince(c.lastMessageAt)}
+                    </span>
+                  </div>
                   <div className="desc">
-                    {c.handoffReason ?? "A IA passou para humano"} · “{c.lastPreview}” · {listTime(c.lastMessageAt)}
+                    <span className="tag tag-need">{capitalize(c.handoffReason ?? "a IA passou para humano")}</span>
+                    {c.lastPreview ? <span className="pending-preview">“{c.lastPreview}”</span> : null}
                   </div>
                 </div>
-                <button className="btn sm primary" onClick={() => onOpenConversation(c.id)}>
-                  Abrir conversa
-                </button>
+                <div className="btn-row">
+                  <button
+                    className="btn sm"
+                    disabled={busy === c.id}
+                    title="Tira da lista. A IA volta a responder este cliente na próxima mensagem."
+                    onClick={() => void resolve(c.id)}
+                  >
+                    Marcar como resolvida
+                  </button>
+                  <button className="btn sm primary" onClick={() => onOpenConversation(c.id)}>
+                    Abrir conversa
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
         <h2 className="section-h">Reservas aguardando aprovação ({res.length})</h2>
         {res.length === 0 ? (
-          <div className="card empty">Nenhuma reserva para aprovar.</div>
+          <div className="card empty">
+            <strong>Nenhuma reserva para aprovar.</strong>
+            <span>Quando um cliente pedir para separar um produto pelo WhatsApp, o pedido aparece aqui para você aprovar ou recusar.</span>
+          </div>
         ) : (
           <div className="pending-list">
             {res.map((r) => (

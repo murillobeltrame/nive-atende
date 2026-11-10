@@ -47,7 +47,10 @@ export function StatusBar({ status, onAction, onToggleAuto, busy }: Props) {
             {status.action.label}
           </button>
         )}
-        <label className="switch">
+        <label
+          className={`switch${level === "error" ? " dim" : ""}`}
+          title={level === "error" ? "Só volta a valer quando o problema acima for resolvido" : undefined}
+        >
           <span className="switch-label">Atendimento automático</span>
           <input
             type="checkbox"

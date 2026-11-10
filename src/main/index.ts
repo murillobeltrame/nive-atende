@@ -742,6 +742,52 @@ for (const [method, fn] of Object.entries(handlers)) {
   });
 }
 
+/**
+ * Menu do programa. No Mac a barra do sistema sempre mostra um menu; sem este, aparece o padrão em
+ * inglês (File, Edit, View, Window). No Windows o app não tem barra de menu.
+ */
+function appMenu(): Menu | null {
+  if (process.platform !== "darwin") return null;
+  return Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: "about", label: `Sobre o ${app.name}` },
+        { type: "separator" },
+        { label: "Ajustes…", accelerator: "Cmd+,", click: () => navigate({ page: "ajustes" }) },
+        { type: "separator" },
+        { role: "hide", label: `Ocultar ${app.name}` },
+        { role: "hideOthers", label: "Ocultar outros" },
+        { role: "unhide", label: "Mostrar todos" },
+        { type: "separator" },
+        { role: "quit", label: `Encerrar ${app.name}` },
+      ],
+    },
+    {
+      label: "Editar",
+      submenu: [
+        { role: "undo", label: "Desfazer" },
+        { role: "redo", label: "Refazer" },
+        { type: "separator" },
+        { role: "cut", label: "Recortar" },
+        { role: "copy", label: "Copiar" },
+        { role: "paste", label: "Colar" },
+        { role: "selectAll", label: "Selecionar tudo" },
+      ],
+    },
+    {
+      label: "Janela",
+      submenu: [
+        { role: "minimize", label: "Minimizar" },
+        { role: "zoom", label: "Zoom" },
+        { role: "close", label: "Fechar janela" },
+        { type: "separator" },
+        { role: "front", label: "Trazer todas para a frente" },
+      ],
+    },
+  ]);
+}
+
 function applyLoginItem(): void {
   if (process.platform === "linux" || isDev) return;
   app.setLoginItemSettings({ openAtLogin: settings.get().app.launchAtLogin, args: ["--hidden"] });
@@ -759,7 +805,7 @@ app.on("activate", () => showWindow());
 
 void app.whenReady().then(async () => {
   app.setAppUserModelId("br.com.nivesistemas.atende");
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(appMenu());
   createWindow();
   tray = new Tray(trayIcon("warn", false));
   tray.on("click", () => showWindow());

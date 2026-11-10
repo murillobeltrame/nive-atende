@@ -31,6 +31,7 @@ export function Sidebar({ page, onNavigate, pendingCount }: Props) {
       {item("conversas", "Conversas", <IconChat />)}
       {item("pendencias", "Pendências", <IconInbox />, pendingCount)}
       {item("reservas", "Reservas", <IconBag />)}
+      <div className="sidebar-sep" role="separator" />
       {item("simulador", "Testar IA", <IconSpark />)}
       {item("consumo", "Consumo", <IconChart />)}
       <div className="sidebar-spacer" />
