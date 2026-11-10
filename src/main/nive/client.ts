@@ -99,6 +99,11 @@ export interface NiveApi {
   getSaleState(saleId: string): Promise<{ state: "draft" | "completed" | "cancelled" | "not_found"; orderNumber: number | null }>;
   /** Cancela um rascunho (mantém o histórico no ERP). Não mexe em venda já finalizada. */
   cancelDraftSale(saleId: string, reason: string): Promise<"cancelled" | "not_draft" | "not_found">;
+  /**
+   * Quanto o relógio do computador está adiantado (positivo) ou atrasado (negativo) em relação ao
+   * horário certo, medido pelo cabeçalho Date das respostas da API. null enquanto não houve resposta.
+   */
+  clockOffsetMs?(): number | null;
 }
 
 /** Normaliza nome para comparar: sem acentos, minúsculo, espaços simples. */
@@ -154,15 +159,34 @@ function toProduct(raw: Json, baseUrl: string): NiveProduct {
 }
 
 export class NiveClient implements NiveApi {
+  private offsetMs: number | null = null;
+
   constructor(
     private readonly cfg: () => { baseUrl: string; storeSlug: string; apiKey: string | null },
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly localNow: () => number = Date.now,
   ) {}
+
+  clockOffsetMs(): number | null {
+    return this.offsetMs;
+  }
+
+  /** Mede a diferença do relógio do computador pelo cabeçalho Date (precisão de 1 s). */
+  private measureClock(res: Response, sentAt: number): void {
+    const header = res.headers?.get?.("date");
+    const server = header ? Date.parse(header) : NaN;
+    if (!Number.isFinite(server)) return;
+    const receivedAt = this.localNow();
+    if (receivedAt - sentAt > 5000) return; // resposta lenta: medida imprecisa
+    // o Date vem truncado no segundo: soma meio segundo; usa o meio do caminho da requisição
+    this.offsetMs = Math.round((sentAt + receivedAt) / 2 - (server + 500));
+  }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { baseUrl, storeSlug, apiKey } = this.cfg();
     if (!apiKey) throw new NiveApiError("Chave da API Nive não configurada", 401);
     if (!storeSlug) throw new NiveApiError("Slug da loja não configurado", 400);
+    const sentAt = this.localNow();
     const res = await this.fetchImpl(baseUrl + path, {
       method,
       headers: {
@@ -174,6 +198,7 @@ export class NiveClient implements NiveApi {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
+    this.measureClock(res, sentAt);
     const text = await res.text();
     let data: unknown = null;
     try {

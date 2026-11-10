@@ -100,6 +100,8 @@ const MAX_TYPING_WAIT_MS = 90_000;
 /** Limite de texto do histórico enviado à IA (mantém o custo previsível). */
 const HISTORY_CHAR_BUDGET = 16000;
 const OUT_OF_HOURS_NOTICE_INTERVAL_MS = 12 * 60 * 60 * 1000;
+/** Mensagem do cliente que chegou até 10 min depois de enviada conta como "na hora" (entra na ordem de chegada). */
+const LIVE_WINDOW_MS = 10 * 60_000;
 
 function customerNote(r: Reservation): string {
   switch (r.customerStatus) {
@@ -184,6 +186,37 @@ export class Engine extends EventEmitter<EngineEvents> {
     return this.deps.settings();
   }
 
+  // ======================================================================== relógio
+  private savedClockOffset: number | null = null;
+
+  /**
+   * Quanto o relógio deste computador está adiantado (+) ou atrasado (−). O WhatsApp manda o horário
+   * certo; as mensagens da IA usam o relógio do computador. Sem converter, um PC alguns minutos fora
+   * do horário grava a resposta da IA antes da pergunta do cliente: a conversa aparece fora de ordem
+   * e a IA perde a própria resposta do histórico (e cumprimenta de novo).
+   */
+  private clockOffset(): number {
+    const store = this.deps.store;
+    const measured = this.deps.nive.clockOffsetMs?.();
+    if (this.savedClockOffset === null) this.savedClockOffset = store.getKv<number>("clock:offset") ?? 0;
+    if (typeof measured === "number" && Number.isFinite(measured)) {
+      if (Math.abs(measured - this.savedClockOffset) > 1000) store.setKv("clock:offset", measured);
+      this.savedClockOffset = measured;
+    }
+    return this.savedClockOffset;
+  }
+
+  /** Horário do WhatsApp → relógio deste computador (nunca no futuro). */
+  private waToLocal(waTs: number): number {
+    return Math.min(this.now(), waTs + this.clockOffset());
+  }
+
+  /** Horário para gravar uma mensagem sem passar na frente das que já estão na conversa. */
+  private stamp(conversationId: string, at = this.now()): number {
+    const last = this.deps.store.lastMessageTime(conversationId);
+    return last !== null && at <= last ? last + 1 : at;
+  }
+
   // ======================================================================== entrada
   async handleInbound(m: InboundMessage): Promise<void> {
     if (m.ignorable) return;
@@ -194,6 +227,9 @@ export class Engine extends EventEmitter<EngineEvents> {
     const conv = store.ensureConversation(m.remoteJid, m.phone, m.pushName);
     const ignored = this.s.attendance.ignoredNumbers.some((n) => samePhone(n, m.phone) || (digitsOnly(n).length >= 8 && digitsOnly(n) === m.phone));
 
+    // horário no relógio deste computador; mensagem que chega na hora nunca fica antes das que já estão na conversa
+    const at = this.waToLocal(m.timestamp);
+    const createdAt = this.now() - at < LIVE_WINDOW_MS ? this.stamp(conv.id, at) : at;
     const msg = store.insertMessage({
       conversationId: conv.id,
       waMessageId: m.waMessageId,
@@ -204,7 +240,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       hasMedia: ["audio", "image", "video", "document", "sticker"].includes(m.kind),
       fileName: m.fileName,
       durationSec: m.durationSec,
-      createdAt: m.timestamp,
+      createdAt,
       status: "received",
       processed: ignored,
     });
@@ -212,7 +248,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       store.saveMedia(msg.id, m.mimetype ?? "application/octet-stream", Buffer.from(m.base64, "base64"));
     }
     const updated = store.updateConversation(conv.id, {
-      lastMessageAt: m.timestamp,
+      lastMessageAt: Math.max(conv.lastMessageAt ?? 0, createdAt),
       lastPreview: preview(msg),
       lastOrigin: "consumidor",
       unread: conv.unread + 1,
@@ -265,7 +301,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       hasMedia: ["audio", "image", "video", "document", "sticker"].includes(m.kind),
       fileName: m.fileName,
       durationSec: m.durationSec,
-      createdAt: m.timestamp,
+      createdAt: this.waToLocal(m.timestamp),
       status: "sent",
     });
     if (m.base64 && msg.hasMedia) store.saveMedia(msg.id, m.mimetype ?? "application/octet-stream", Buffer.from(m.base64, "base64"));
@@ -273,7 +309,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     const wasPaused = conv.aiPausedUntil !== null && conv.aiPausedUntil > this.now() && conv.state === "humano";
     const pauseUntil = this.now() + this.s.attendance.pauseOnHumanMinutes * 60_000;
     const updated = store.updateConversation(conv.id, {
-      lastMessageAt: m.timestamp,
+      lastMessageAt: Math.max(conv.lastMessageAt ?? 0, msg.createdAt),
       lastPreview: preview(msg),
       lastOrigin: "humano_celular",
       state: conv.state === "ignorado" ? "ignorado" : "humano",
@@ -1007,7 +1043,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private async sendAiText(conversationId: string, text: string, opts: { countsAsAiReply: boolean }): Promise<ChatMessage> {
     const store = this.deps.store;
-    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "text", text, status: "pending", createdAt: this.now() });
+    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "text", text, status: "pending", createdAt: this.stamp(conversationId) });
     this.emit("message", msg);
     try {
       // já está "digitando" desde que a IA começou; fora disso, mostra um instante antes de enviar
@@ -1054,7 +1090,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       mediaMime: mime,
       hasMedia: Boolean(img),
       status: "pending",
-      createdAt: this.now(),
+      createdAt: this.stamp(conversationId),
     });
     if (img) store.saveMedia(msg.id, mime, img.data);
     this.emit("message", msg);
@@ -1168,6 +1204,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       fileName: content.fileName ?? null,
       status: "pending",
       author: author || "Equipe",
+      createdAt: this.stamp(conversationId),
     });
     if (content.data) store.saveMedia(msg.id, content.mediaMime ?? "application/octet-stream", content.data);
     this.emit("message", msg);
@@ -1202,7 +1239,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   // ======================================================================== estados
   addSystemEvent(conversationId: string, eventType: SystemEventType, text: string): ChatMessage {
-    const msg = this.deps.store.insertMessage({ conversationId, origin: "sistema", kind: "event", text, status: "sent", eventType });
+    const msg = this.deps.store.insertMessage({ conversationId, origin: "sistema", kind: "event", text, status: "sent", eventType, createdAt: this.stamp(conversationId) });
     this.emit("message", msg);
     return msg;
   }

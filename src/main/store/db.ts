@@ -438,9 +438,17 @@ export class Store {
 
   listMessages(conversationId: string, limit = 300): ChatMessage[] {
     const rows = this.db
-      .prepare("SELECT * FROM (SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at ASC")
+      .prepare(
+        "SELECT * FROM (SELECT *, rowid AS seq FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?) ORDER BY created_at ASC, seq ASC",
+      )
       .all(conversationId, limit) as Row[];
     return rows.map((r) => this.toMessage(r));
+  }
+
+  /** Horário da mensagem mais recente da conversa (para manter a ordem de chegada). */
+  lastMessageTime(conversationId: string): number | null {
+    const r = this.db.prepare("SELECT MAX(created_at) AS t FROM messages WHERE conversation_id = ?").get(conversationId) as Row | undefined;
+    return r && r.t !== null && r.t !== undefined ? Number(r.t) : null;
   }
 
   /** Textos recentes enviados pela equipe (app ou celular), mais novos primeiro. */
@@ -456,7 +464,7 @@ export class Store {
   /** Mensagens do cliente ainda não tratadas pelo motor. */
   listUnprocessed(conversationId: string): ChatMessage[] {
     const rows = this.db
-      .prepare("SELECT * FROM messages WHERE conversation_id = ? AND processed = 0 ORDER BY created_at ASC")
+      .prepare("SELECT * FROM messages WHERE conversation_id = ? AND processed = 0 ORDER BY created_at ASC, rowid ASC")
       .all(conversationId) as Row[];
     return rows.map((r) => this.toMessage(r));
   }

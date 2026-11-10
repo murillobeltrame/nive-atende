@@ -108,6 +108,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "- Não informe a quantidade em estoque. Só diga 'última unidade' ou 'últimas unidades' quando restarem 1 ou 2, como incentivo.",
     "- No máximo 3 produtos por mensagem. Preço a prazo só se for diferente, entre parênteses.",
     "- Se o cliente só cumprimentar, responda com simpatia e pergunte em que pode ajudar, sem despejar produtos.",
+    "- Cumprimente (bom dia, boa tarde, olá) só no início do atendimento. Se você ou a equipe já cumprimentaram nesta conversa (veja o histórico), não cumprimente de novo: continue o assunto direto, como numa conversa normal de WhatsApp. Só volte a cumprimentar se a conversa for retomada em outro dia.",
     "- Se o cliente mandou várias mensagens seguidas, responda tudo numa mensagem só, na ordem em que fizer sentido. Nunca mande duas respostas para a mesma pergunta.",
     "",
     "O QUE VOCÊ PODE FAZER",

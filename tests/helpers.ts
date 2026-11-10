@@ -63,6 +63,11 @@ export class FakeNive implements NiveApi {
   calls: string[] = [];
   drafts: Array<{ customerId: string | null; variantId: string; quantity: number; notes: string }> = [];
   failDraft = false;
+  /** Diferença do relógio medida pela API (null = ainda não mediu). */
+  clockOffset: number | null = null;
+  clockOffsetMs(): number | null {
+    return this.clockOffset;
+  }
   async testConnection(): Promise<void> {}
   async findCustomersByPhone(phone: string): Promise<NiveCustomer[]> {
     this.calls.push(`phone:${phone}`);
