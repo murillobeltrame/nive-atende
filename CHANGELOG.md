@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.3.7 — 2026-11-10
+
+- **A IA tenta de novo sozinha:** quando a plataforma de IA falhava por um instante (limite de uso, fora do ar, internet oscilando), a mensagem do cliente ficava esperando e ninguém respondia. Agora o app tenta de novo em 15 s, 30 s, 1 min, 2 min e depois a cada 5 min, até a IA voltar. Se passar de 2 horas, a conversa vai para "precisa de você" em vez de responder atrasado.
+- **Demora da IA não pausa mais a conversa:** quando a IA demorava demais para responder ou a conexão caía, a conversa era passada para humano e a IA ficava 2 horas sem responder aquele cliente. Agora isso conta como falha passageira e o app tenta de novo.
+- **Áudio:** falha passageira ao transcrever também tenta de novo, em vez de passar para humano.
+- **Conversa travada é liberada:** se um atendimento não terminar em 5 minutos, o app desiste dele e refaz, sem mandar resposta em dobro.
+- **Registro de erros:** os erros do atendimento passam a ser gravados no arquivo `atendimento.log` da pasta de registros (sem o texto das mensagens), para descobrir depois por que a IA não respondeu.
+
 ## v0.3.6 — 2026-11-10
 
 - **Conversa na ordem certa:** com o relógio do computador adiantado ou atrasado, as respostas da IA podiam aparecer antes da mensagem do cliente. O app agora mede a diferença do relógio pela API Nive e grava tudo na ordem em que aconteceu.
