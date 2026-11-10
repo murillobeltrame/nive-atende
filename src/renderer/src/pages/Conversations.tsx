@@ -6,7 +6,7 @@ import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, Ic
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
-import { auxLine, avatarColors, contactName, formatPhone, initials, listTime, previewPrefix, usd } from "../lib/format";
+import { auxLine, avatarColors, conversationName, formatPhone, initials, listTime, previewPrefix, usd } from "../lib/format";
 
 interface Props {
   filter: ConversationFilter;
@@ -265,7 +265,7 @@ function ClientPanel({ c }: { c: Conversation }) {
     <aside className="client-panel" aria-label="Dados do cliente">
       <div className="stack" style={{ gap: 6 }}>
         <span className="panel-label">Cliente</span>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{c.customerName ?? contactName(c.displayName)}</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{c.customerName ?? conversationName(c)}</span>
         {c.verifiedBy ? (
           <span className="verified">
             <IconShield size={15} />
@@ -373,7 +373,7 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
 
   let lastDay = "";
   return (
-    <section className="chat" aria-label={`Conversa com ${contactName(conversation.displayName)}`}>
+    <section className="chat" aria-label={`Conversa com ${conversationName(conversation)}`}>
       <header className="chat-head">
         <div className="chat-head-id">
           <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
@@ -499,7 +499,7 @@ function ContactHeader({ conversation, ident, typing }: { conversation: Conversa
   return (
     <div style={{ minWidth: 0 }}>
       <div className="chat-head-name">
-        {contactName(conversation.displayName)}
+        {conversationName(conversation)}
         <button className="icon-btn sm rename-btn" onClick={open} aria-label="Renomear e salvar contato" title="Renomear e salvar contato">
           <IconPencil size={14} />
         </button>
@@ -679,7 +679,7 @@ export function ConversationsPage({
                   <Avatar name={c.displayName} seed={c.displayName} conversationId={c.id} />
                   <div className="conv-body">
                     <div className="conv-row">
-                      <span className="conv-name">{contactName(c.displayName)}</span>
+                      <span className="conv-name">{conversationName(c)}</span>
                       <span className={`conv-time ${hot ? "hot" : ""}`}>{listTime(c.lastMessageAt)}</span>
                     </div>
                     <div className="conv-preview">

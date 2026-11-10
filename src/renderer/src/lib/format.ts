@@ -51,6 +51,11 @@ export function formatPhone(phone: string): string {
 }
 
 /** Nome para mostrar: se o contato não tem nome (só número), mostra o telefone formatado. */
+/** Nome para mostrar de uma conversa: nunca fica em branco (cai para o telefone). */
+export function conversationName(c: { displayName: string; phone: string }): string {
+  return contactName(c.displayName ?? "").trim() || formatPhone(c.phone ?? "").trim() || "Contato sem nome";
+}
+
 export function contactName(name: string): string {
   return /^\+?\d[\d\s-]{7,}$/.test(name.trim()) ? formatPhone(name) : name;
 }

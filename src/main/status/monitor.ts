@@ -201,8 +201,8 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
       action = { label: "Ler o termo", kind: "accept_terms" };
     } else if (err) {
       level = "error";
-      headline = `Atendimento parado: ${c[err].message.charAt(0).toLowerCase()}${c[err].message.slice(1)}`;
-      detail = `${this.downSince ? `Caiu às ${new Date(this.downSince).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ` : ""}${waitingCount} mensage${waitingCount === 1 ? "m" : "ns"} aguardando · nada é enviado ao cliente até voltar`;
+      headline = `Atendimento parado: ${lowerFirst(c[err].message)}`;
+      detail = `${this.downSince ? `Caiu às ${new Date(this.downSince).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ` : ""}${waitingCount ? `${waitingCount} mensage${waitingCount === 1 ? "m" : "ns"} aguardando · ` : ""}nada é enviado ao cliente até voltar`;
       action =
         err === "whatsapp"
           ? { label: "Reconectar (mostrar QR Code)", kind: "reconnect" }
@@ -219,7 +219,7 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
                 : { label: "Tentar de novo", kind: "retry" };
     } else if (warn) {
       level = "warn";
-      headline = `Funcionando, mas atenção: ${c[warn].message.charAt(0).toLowerCase()}${c[warn].message.slice(1)}`;
+      headline = `Funcionando, mas atenção: ${lowerFirst(c[warn].message)}`;
       detail = order.map((n) => `${labelOf(n)} ${c[n].state === "ok" ? "ok" : c[n].state === "warn" ? "atenção" : "—"}`).join(" · ");
       action = warn === "openai" ? { label: "Como adicionar créditos", kind: "open_ai_guide" } : { label: "Verificar de novo", kind: "retry" };
     } else if (!s.attendance.autoEnabled) {
@@ -259,6 +259,12 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
     this.lastLevel = snap.level;
     return snap;
   }
+}
+
+/** Minúscula no começo da frase, sem estragar nomes próprios e siglas ("WhatsApp", "API Nive", "IA"). */
+export function lowerFirst(msg: string): string {
+  if (/^(WhatsApp|OpenAI|Anthropic|Google|Gemini|Claude|Evolution|Nive)\b/.test(msg) || /^[A-ZÀ-Ý]{2}/.test(msg)) return msg;
+  return msg.charAt(0).toLowerCase() + msg.slice(1);
 }
 
 function labelOf(n: CheckName): string {

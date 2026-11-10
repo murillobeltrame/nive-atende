@@ -115,9 +115,9 @@ p {
   min-width: 0;
   overflow: auto;
 }
+/* todas as telas usam a largura inteira da janela */
 .page-pad {
   padding: 24px 28px 40px;
-  max-width: 1180px;
 }
 .page-title {
   font-size: 22px;
@@ -127,6 +127,8 @@ p {
 .page-sub {
   color: var(--muted);
   margin-bottom: 20px;
+  /* texto corrido não estica com a janela: linha longa demais cansa a leitura */
+  max-width: 110ch;
 }
 
 /* ---------------------------------------------------------------- status bar */
@@ -284,6 +286,10 @@ p {
 }
 .switch-label strong {
   color: var(--brand-dark);
+}
+/* desligado não usa o verde de "ligado" */
+.switch input:not(:checked) ~ .switch-label strong {
+  color: var(--text-2);
 }
 
 /* ---------------------------------------------------------------- sidebar */
