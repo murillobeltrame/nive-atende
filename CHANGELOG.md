@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.3.6 — 2026-11-10
+
+- **Conversa na ordem certa:** com o relógio do computador adiantado ou atrasado, as respostas da IA podiam aparecer antes da mensagem do cliente. O app agora mede a diferença do relógio pela API Nive e grava tudo na ordem em que aconteceu.
+- **A IA não cumprimenta de novo:** quando a ordem saía errada, a IA perdia a própria resposta do histórico e dava "boa tarde" outra vez. Agora ela vê a conversa inteira e só cumprimenta no início do atendimento (ou se a conversa for retomada em outro dia).
+- Reserva grava a data de criação pelo relógio do motor.
+
 ## v0.3.5 — 2026-11-03
 
 - **Produto pelo apelido:** quando o cliente pede pelo apelido ou pelo jeito do frasco ("o perfume da abelhinha", "o do frasco dourado", "parecido com o X"), a IA pensa no produto real e busca por ele. Se não souber, lê os nomes de todo o catálogo daquele tipo e reconhece qual é, confirmando com o cliente e mandando a foto, antes de oferecer outras opções.
