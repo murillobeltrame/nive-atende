@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.3.8 — 2026-11-10
+
+- **O programa se atualiza sozinho (Windows):** o Nive Atende procura versão nova ao abrir e a cada 4 horas, baixa em segundo plano e mostra no topo da tela o aviso "Nova versão pronta" com o botão **Atualizar agora**. Ele fecha, instala e abre de novo em alguns segundos. Se você fechar o programa antes de clicar, ele já abre atualizado da próxima vez.
+- **Mac:** o programa avisa que há versão nova e abre o download do instalador (no Mac ainda é preciso instalar por cima).
+- **Configurações → Programa:** botão **Verificar atualização** para conferir na hora.
+- Esta é a última versão que precisa ser instalada à mão no Windows.
+
 ## v0.3.7 — 2026-11-10
 
 - **A IA tenta de novo sozinha:** quando a plataforma de IA falhava por um instante (limite de uso, fora do ar, internet oscilando), a mensagem do cliente ficava esperando e ninguém respondia. Agora o app tenta de novo em 15 s, 30 s, 1 min, 2 min e depois a cada 5 min, até a IA voltar. Se passar de 2 horas, a conversa vai para "precisa de você" em vez de responder atrasado.
