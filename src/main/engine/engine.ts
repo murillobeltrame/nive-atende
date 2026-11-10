@@ -42,6 +42,8 @@ export interface EngineDeps {
   echoGraceMs?: number;
   /** Teto da espera para juntar mensagens seguidas do cliente. */
   maxBatchWaitMs?: number;
+  /** Registro de erros do atendimento em arquivo (nunca com o texto das mensagens). */
+  log?: (level: "info" | "warn" | "error", msg: string, extra?: unknown) => void;
   /** Baixa a foto do produto para enviar e mostrar na conversa do app. */
   fetchImage?: (url: string) => Promise<{ data: Buffer; mime: string } | null>;
 }
@@ -102,6 +104,19 @@ const HISTORY_CHAR_BUDGET = 16000;
 const OUT_OF_HOURS_NOTICE_INTERVAL_MS = 12 * 60 * 60 * 1000;
 /** Mensagem do cliente que chegou até 10 min depois de enviada conta como "na hora" (entra na ordem de chegada). */
 const LIVE_WINDOW_MS = 10 * 60_000;
+/** Esperas entre as novas tentativas depois de uma falha passageira da IA (a última se repete). */
+const RETRY_DELAYS_MS = [15_000, 30_000, 60_000, 120_000, 300_000];
+/** Tempo máximo de um atendimento; passou disso, considera travado, libera a conversa e tenta de novo. */
+const PROCESS_TIMEOUT_MS = 5 * 60_000;
+
+/** Um atendimento em andamento. "abandoned" = estourou o tempo máximo: não pode mais enviar nada. */
+interface Run {
+  abandoned: boolean;
+}
+
+function isTransient(e: unknown): e is AiError {
+  return e instanceof AiError && (e.kind === "unavailable" || e.kind === "rate_limit");
+}
 
 function customerNote(r: Reservation): string {
   switch (r.customerStatus) {
@@ -156,6 +171,8 @@ export class Engine extends EventEmitter<EngineEvents> {
   private readonly timers = new Map<string, { timer: unknown; firstAt: number }>();
   private readonly running = new Map<string, Promise<void>>();
   private readonly rerun = new Set<string>();
+  /** Nova tentativa agendada depois de falha passageira da IA (timer null = tentativa em andamento). */
+  private readonly retries = new Map<string, { timer: unknown; count: number }>();
   /** Até quando o contato aparece "digitando…"/"gravando áudio…" (WhatsApp embutido). */
   private readonly typingUntil = new Map<string, number>();
   /** Quantas vezes a resposta foi refeita porque chegou mensagem nova enquanto a IA pensava. */
@@ -384,6 +401,32 @@ export class Engine extends EventEmitter<EngineEvents> {
     const t = this.timers.get(conversationId);
     if (t) this.clearTimer(t.timer);
     this.timers.delete(conversationId);
+    const r = this.retries.get(conversationId);
+    if (r?.timer != null) this.clearTimer(r.timer);
+    this.retries.delete(conversationId);
+  }
+
+  private log(level: "info" | "warn" | "error", msg: string, extra?: unknown): void {
+    this.deps.log?.(level, msg, extra);
+  }
+
+  /**
+   * A IA falhou por um motivo passageiro (limite de uso, fora do ar, sem conexão): as mensagens ficam
+   * aguardando e o atendimento tenta de novo sozinho, com esperas cada vez maiores. Se demorar mais que
+   * a janela de mensagens antigas, a conversa passa para humano em vez de responder atrasado.
+   */
+  private scheduleRetry(conversationId: string): number {
+    const prev = this.retries.get(conversationId);
+    if (prev?.timer != null) this.clearTimer(prev.timer);
+    const count = (prev?.count ?? 0) + 1;
+    const wait = RETRY_DELAYS_MS[Math.min(count, RETRY_DELAYS_MS.length) - 1]!;
+    const entry = { count, timer: null as unknown };
+    entry.timer = this.setTimer(() => {
+      entry.timer = null;
+      void this.process(conversationId);
+    }, wait);
+    this.retries.set(conversationId, entry);
+    return wait;
   }
 
   /** Processa uma conversa (uma de cada vez por conversa). */
@@ -393,12 +436,35 @@ export class Engine extends EventEmitter<EngineEvents> {
       this.rerun.add(conversationId);
       return current;
     }
-    const p = this.processOnce(conversationId)
+    const run: Run = { abandoned: false };
+    let watchdog: unknown;
+    const stuck = new Promise<never>((_, reject) => {
+      watchdog = this.setTimer(() => {
+        run.abandoned = true;
+        reject(new Error("atendimento travado"));
+      }, PROCESS_TIMEOUT_MS);
+    });
+    const work = this.processOnce(conversationId, run);
+    work.catch(() => undefined); // se foi abandonado, o erro tardio não interessa
+    const p = Promise.race([work, stuck])
       .catch((e) => {
-        this.addSystemEvent(conversationId, "error", `Erro no atendimento automático: ${(e as Error).message}`);
+        if (run.abandoned) {
+          // travou (envio ou consulta que nunca terminou): libera a conversa e tenta de novo
+          this.stopTyping(conversationId);
+          const wait = this.scheduleRetry(conversationId);
+          this.log("error", `atendimento travado por mais de ${PROCESS_TIMEOUT_MS / 60_000} min; nova tentativa em ${wait / 1000} s`);
+          return;
+        }
+        this.log("error", "erro no atendimento automático", e);
+        if (this.deps.store.getConversation(conversationId)) {
+          this.addSystemEvent(conversationId, "error", `Erro no atendimento automático: ${(e as Error).message}`);
+        }
       })
       .finally(() => {
+        this.clearTimer(watchdog);
         this.running.delete(conversationId);
+        // terminou sem agendar nova tentativa: zera a contagem
+        if (this.retries.get(conversationId)?.timer === null) this.retries.delete(conversationId);
         if (this.rerun.delete(conversationId)) void this.process(conversationId);
       });
     this.running.set(conversationId, p);
@@ -420,7 +486,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
   }
 
-  private async processOnce(conversationId: string): Promise<void> {
+  private async processOnce(conversationId: string, run: Run): Promise<void> {
     const store = this.deps.store;
     const s = this.s;
     let conv = store.getConversation(conversationId);
@@ -486,13 +552,20 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.markAsRead(conv.id);
     this.startTyping(conv.id);
     try {
-      await this.replyWithAi(conv, fresh, ids);
+      await this.replyWithAi(conv, fresh, ids, run);
     } finally {
-      this.stopTyping(conv.id);
+      if (!run.abandoned) this.stopTyping(conv.id);
     }
   }
 
-  private async replyWithAi(conversation: Conversation, fresh: ChatMessage[], ids: string[]): Promise<void> {
+  /** Falha passageira da IA: avisa o status, registra e agenda nova tentativa (as mensagens ficam aguardando). */
+  private retryLater(conversationId: string, e: AiError, what: string): void {
+    this.emit("aiError", e);
+    const wait = this.scheduleRetry(conversationId);
+    this.log("warn", `falha passageira da IA ${what} (${e.kind}): ${e.message}; nova tentativa em ${wait / 1000} s`);
+  }
+
+  private async replyWithAi(conversation: Conversation, fresh: ChatMessage[], ids: string[], run: Run): Promise<void> {
     const store = this.deps.store;
     const s = this.s;
     let conv = conversation;
@@ -506,7 +579,15 @@ export class Engine extends EventEmitter<EngineEvents> {
         store.markProcessed(ids);
         return this.handoff(conv.id, `áudio longo (${Math.round(m.durationSec)} s)`);
       }
-      const ok = await this.transcribeMessage(m);
+      let ok: boolean;
+      try {
+        ok = await this.transcribeMessage(m);
+      } catch (e) {
+        if (run.abandoned) return;
+        if (isTransient(e)) return this.retryLater(conv.id, e, "ao transcrever áudio");
+        throw e;
+      }
+      if (run.abandoned) return;
       if (!ok) {
         store.markProcessed(ids);
         return this.handoff(conv.id, "não foi possível entender o áudio");
@@ -541,14 +622,20 @@ export class Engine extends EventEmitter<EngineEvents> {
     try {
       result = await this.runAi(conv.id, false);
     } catch (e) {
-      if (e instanceof AiError && (e.kind === "no_credit" || e.kind === "invalid_key" || e.kind === "unavailable" || e.kind === "rate_limit")) {
-        // deixa as mensagens aguardando; o monitor de status mostra o problema e retoma depois
+      if (run.abandoned) return;
+      if (isTransient(e)) return this.retryLater(conv.id, e, "ao gerar resposta");
+      if (e instanceof AiError && (e.kind === "no_credit" || e.kind === "invalid_key")) {
+        // deixa as mensagens aguardando; o monitor de status mostra o problema e retoma quando voltar
         this.emit("aiError", e);
+        this.log("error", `IA parada (${e.kind}): ${e.message}`);
         return;
       }
+      this.log("error", "erro ao gerar resposta; conversa passada para humano", e);
       store.markProcessed(ids);
       return this.handoff(conv.id, "erro ao gerar resposta");
     }
+    // estourou o tempo máximo e outra tentativa já assumiu: não envia nada
+    if (run.abandoned) return;
     // Chegou mensagem nova enquanto a IA pensava? Descarta o rascunho e responde tudo de uma vez.
     const arrivedMeanwhile = store.listUnprocessed(conv.id).filter((m) => !ids.includes(m.id));
     const regen = this.regenerations.get(conv.id) ?? 0;
@@ -895,7 +982,9 @@ export class Engine extends EventEmitter<EngineEvents> {
       store.addAiAction(m.conversationId, { at: this.now(), label: `Transcreveu áudio${m.durationSec ? ` de ${Math.round(m.durationSec)} s` : ""}`, kind: "info" });
       return true;
     } catch (e) {
+      if (isTransient(e)) throw e; // quem chamou tenta de novo depois
       if (e instanceof AiError && (e.kind === "no_credit" || e.kind === "invalid_key")) this.emit("aiError", e);
+      this.log("warn", "não foi possível transcrever o áudio", e);
       return false;
     }
   }
@@ -999,6 +1088,7 @@ export class Engine extends EventEmitter<EngineEvents> {
           }, state);
         } catch (e) {
           console.error(`[ferramenta ${call.function.name}]`, (e as Error).message);
+          this.log("warn", `falha na ferramenta ${call.function.name}`, e);
           output = { erro: "Falha ao consultar o sistema da loja", instrucao: "Diga que não conseguiu consultar agora e use transferir_para_humano." };
           state.actions.push({ label: `Falha em ${call.function.name}`, kind: "error" });
         }

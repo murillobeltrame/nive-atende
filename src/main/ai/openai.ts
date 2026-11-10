@@ -93,7 +93,13 @@ export function classifyAiError(e: unknown, company = "OpenAI"): AiError {
   if (err.status === 429 || code === "RESOURCE_EXHAUSTED" || code === "rate_limit_error")
     return new AiError(`Limite de uso da ${company} atingido; tentando de novo em instantes.`, "rate_limit");
   if ((err.status && err.status >= 500) || code === "overloaded_error") return new AiError(`${company} indisponível no momento.`, "unavailable");
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(msg)) return new AiError(`Sem conexão com a ${company}.`, "unavailable");
+  // timeout e queda de conexão são passageiros: o atendimento tenta de novo em vez de passar para humano
+  const name = (e as { name?: string } | null)?.name ?? "";
+  if (
+    /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|EPIPE|fetch failed|network|socket hang up|connection error|timed out|timeout|terminated/i.test(msg) ||
+    /TimeoutError|AbortError|APIConnection/i.test(name)
+  )
+    return new AiError(`Sem conexão com a ${company}.`, "unavailable");
   return new AiError(msg, "other");
 }
 

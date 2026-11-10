@@ -139,11 +139,15 @@ export class FakeAi implements AiProvider {
   toolsSeen: string[][] = [];
   transcript = "oi, vocês ainda têm aquela bolsa caramelo?";
   error: Error | null = null;
+  transcribeError: Error | null = null;
+  /** Quantas vezes o chat foi chamado (inclusive as que deram erro). */
+  attempts = 0;
   script(...steps: Step[]): this {
     this.steps.push(...steps);
     return this;
   }
   async chat(_model: string, messages: AiMessage[], tools: AiToolDef[]): Promise<AiChatResult> {
+    this.attempts++;
     if (this.error) throw this.error;
     this.received.push(structuredClone(messages));
     this.toolsSeen.push(tools.map((t) => t.name));
@@ -152,6 +156,7 @@ export class FakeAi implements AiProvider {
     return typeof step === "function" ? step(messages, tools) : step;
   }
   async transcribe(): Promise<string> {
+    if (this.transcribeError) throw this.transcribeError;
     return this.transcript;
   }
   async listModels(): Promise<string[]> {
@@ -263,7 +268,9 @@ export function setup(opts: { settings?: DeepPartial<AppSettings>; blocked?: () 
   currentClock = clock;
   let settings = makeSettings(opts.settings);
   let blocked: string | null = null;
+  let logFn: (level: "info" | "warn" | "error", msg: string, extra?: unknown) => void = () => undefined;
   const engine = new Engine({
+    log: (level, msg, extra) => logFn(level, msg, extra),
     store,
     settings: () => settings,
     nive,
@@ -287,6 +294,7 @@ export function setup(opts: { settings?: DeepPartial<AppSettings>; blocked?: () 
     engine,
     setSettings: (p: DeepPartial<AppSettings>) => (settings = deepMerge(settings, p)),
     setBlocked: (v: string | null) => (blocked = v),
+    onLog: (fn: typeof logFn) => (logFn = fn),
   };
 }
 

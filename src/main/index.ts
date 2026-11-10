@@ -141,6 +141,7 @@ const engine = new Engine({
   wa: gateway,
   transcode: createFfmpegTranscoder(),
   blockedReason: () => monitor.blockedReason(),
+  log: (level, msg, extra) => log("atendimento", level, msg, extra),
 });
 const simulator = new Simulator({ settings: () => settings.get(), nive, ai });
 simulator.on("message", (m) => send(EVENTS.sim, { message: m }));
