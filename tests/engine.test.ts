@@ -255,4 +255,35 @@ describe("atendimento parado", () => {
     expect(t.wa.sent).toHaveLength(0);
     expect(t.store.countUnprocessed()).toBe(1);
   });
+
+  it("erro da plataforma de IA: passa para humano com o motivo real e avisa o status", async () => {
+    const t = setup();
+    t.ai.error = new AiError("messages.1.content.0.image.source: Unable to download the file", "other");
+    const errors: AiError[] = [];
+    t.engine.on("aiError", (e) => errors.push(e));
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    await t.clock.advance(2000);
+    expect(errors[0]?.kind).toBe("other");
+    const conv = t.store.listConversations("todas")[0]!;
+    expect(conv.state).toBe("precisa_humano");
+    expect(conv.handoffReason).toBe("erro ao gerar resposta: messages.1.content.0.image.source: Unable to download the file");
+  });
+
+  it("resposta da IA que dá certo avisa o status", async () => {
+    const t = setup();
+    let ok = 0;
+    t.engine.on("aiOk", () => ok++);
+    t.ai.script(reply("Oi! Em que posso ajudar?"));
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    await t.clock.advance(2000);
+    expect(ok).toBe(1);
+  });
+});
+
+describe("aiErrorDetail", () => {
+  it("encurta e nunca leva chave", async () => {
+    const { aiErrorDetail } = await import("../src/main/engine/engine");
+    expect(aiErrorDetail(new Error("invalid x-api-key sk-ant-api03-abcdefghijklmnop"))).toBe("invalid x-api-key [chave]");
+    expect(aiErrorDetail(new Error("x".repeat(300))).length).toBe(178);
+  });
 });

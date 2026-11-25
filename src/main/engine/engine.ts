@@ -89,6 +89,8 @@ export interface EngineEvents {
   reservation: [Reservation];
   notify: [NotifyEvent];
   aiError: [AiError];
+  /** Uma resposta da IA deu certo (limpa o aviso de respostas falhando). */
+  aiOk: [];
   activity: [{ conversationId: string; label: string | null }];
   /** O cliente está digitando/gravando áudio (null = parou). */
   typing: [{ conversationId: string; state: "composing" | "recording" | null }];
@@ -631,9 +633,13 @@ export class Engine extends EventEmitter<EngineEvents> {
         return;
       }
       this.log("error", "erro ao gerar resposta; conversa passada para humano", e);
+      // o status da IA mostra o motivo real (o teste rápido só lista modelos e diria "IA ok")
+      if (e instanceof AiError) this.emit("aiError", e);
       store.markProcessed(ids);
-      return this.handoff(conv.id, "erro ao gerar resposta");
+      const detail = aiErrorDetail(e);
+      return this.handoff(conv.id, detail ? `erro ao gerar resposta: ${detail}` : "erro ao gerar resposta");
     }
+    this.emit("aiOk");
     // estourou o tempo máximo e outra tentativa já assumiu: não envia nada
     if (run.abandoned) return;
     // Chegou mensagem nova enquanto a IA pensava? Descarta o rascunho e responde tudo de uma vez.
@@ -1648,4 +1654,11 @@ export class Engine extends EventEmitter<EngineEvents> {
     await this.withInFlight(() => this.deps.wa.sendText(jid, body));
     return true;
   }
+}
+
+/** Texto curto do erro da IA para o motivo da passagem (nunca leva chave: só a mensagem da plataforma). */
+export function aiErrorDetail(e: unknown): string {
+  const raw = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+  const msg = raw.replace(/\b(sk|AIza)[-\w]{8,}/g, "[chave]").replace(/\s+/g, " ").trim();
+  return msg.length > 180 ? `${msg.slice(0, 177)}…` : msg;
 }

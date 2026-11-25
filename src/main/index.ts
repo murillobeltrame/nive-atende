@@ -347,6 +347,7 @@ engine.on("reservation", (r) => {
   refreshTray();
 });
 engine.on("aiError", (e: AiError) => monitor.reportAiError(e));
+engine.on("aiOk", () => monitor.reportAiOk());
 engine.on("notify", (n) => {
   const s = settings.get();
   if (s.app.notify === "nenhuma" || !Notification.isSupported()) return;

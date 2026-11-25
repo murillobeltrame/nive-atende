@@ -32,6 +32,8 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
   private timers: NodeJS.Timeout[] = [];
   private lastNiveCheck = 0;
   private lastOpenAiCheck = 0;
+  /** Última falha de resposta real da IA; fica até uma resposta dar certo. */
+  private chatError: string | null = null;
   private whatsappState: ConnectionState = "unknown";
   private evolutionFailures = 0;
   private readonly now: () => number;
@@ -123,7 +125,7 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
       return;
     }
     try {
-      await this.deps.testOpenAi(this.checks.openai.state === "error");
+      await this.deps.testOpenAi(this.checks.openai.state === "error" || this.chatError !== null);
       this.setUsageWarning();
     } catch (e) {
       this.reportAiError(e as AiError, false);
@@ -138,6 +140,8 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
     const cost = this.deps.store.usageBetween(first, localDay(this.now())).reduce((a, r) => a + r.costUsd, 0);
     if (s.ai.monthlyAlertUsd > 0 && cost >= s.ai.monthlyAlertUsd) {
       this.set("openai", "warn", `Gasto estimado do mês passou do alerta de US$ ${s.ai.monthlyAlertUsd.toFixed(2)}`);
+    } else if (this.chatError) {
+      this.set("openai", "warn", `Respostas da IA falhando: ${this.chatError}`);
     } else {
       this.set("openai", "ok", "IA ok");
     }
@@ -149,8 +153,21 @@ export class StatusMonitor extends EventEmitter<{ status: [StatusSnapshot]; reco
     if (e.kind === "no_credit") this.set("openai", "error", `Seus créditos da ${company} acabaram`);
     else if (e.kind === "invalid_key") this.set("openai", "error", `Chave da ${company} inválida`);
     else if (e.kind === "rate_limit") this.set("openai", "warn", `Limite de uso da ${company} atingido; tentando de novo`);
-    else this.set("openai", "warn", e.message);
+    else {
+      if (e.kind === "other") this.chatError = e.message.length > 160 ? `${e.message.slice(0, 157)}…` : e.message;
+      this.set("openai", "warn", this.chatError && e.kind === "other" ? `Respostas da IA falhando: ${this.chatError}` : e.message);
+    }
     if (publish) this.publish();
+  }
+
+  /** Uma resposta real da IA deu certo: some o aviso de falha. */
+  reportAiOk(): void {
+    if (!this.chatError) return;
+    this.chatError = null;
+    if (this.checks.openai.state === "warn") {
+      this.setUsageWarning();
+      this.publish();
+    }
   }
 
   async runFast(): Promise<void> {
