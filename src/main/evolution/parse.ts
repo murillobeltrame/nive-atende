@@ -18,6 +18,8 @@ export interface InboundMessage {
   mimetype: string | null;
   fileName: string | null;
   durationSec: number | null;
+  /** Coordenadas, quando é uma localização. */
+  geo?: { lat: number; lng: number } | null;
   /** Mídia já embutida no webhook (quando "base64" está ligado na Evolution). */
   base64: string | null;
   timestamp: number;
@@ -108,6 +110,7 @@ export function parseMessage(data: Json): InboundMessage | null {
   let text: string | null = null;
   let mimetype: string | null = null;
   let fileName: string | null = null;
+  let geo: { lat: number; lng: number } | null = null;
   let durationSec: number | null = null;
   let ignorable = false;
 
@@ -145,6 +148,9 @@ export function parseMessage(data: Json): InboundMessage | null {
     const l = asObj(message.locationMessage ?? message.liveLocationMessage);
     kind = "location";
     text = [l.name, l.address].filter(Boolean).join(" · ") || `${l.degreesLatitude}, ${l.degreesLongitude}`;
+    const lat = Number(l.degreesLatitude);
+    const lng = Number(l.degreesLongitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) geo = { lat, lng };
   } else if (message.contactMessage || message.contactsArrayMessage) {
     kind = "contact";
     const c = asObj(message.contactMessage);
@@ -181,6 +187,7 @@ export function parseMessage(data: Json): InboundMessage | null {
     mimetype,
     fileName,
     durationSec,
+    geo,
     base64,
     timestamp,
     ignorable: ignorable || isGroupJid(remoteJid) || remoteJid === "status@broadcast",

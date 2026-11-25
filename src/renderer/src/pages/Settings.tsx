@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { MapPreview } from "../components/MapPreview";
 import type { AiProviderId, AppSettings, ProductNickname, SecretKey, TestResult } from "../../../shared/types";
 import { PROVIDER_IDS, PROVIDERS, TIER_LABEL, TIER_ORDER, type CatalogModel } from "../../../shared/ai-catalog";
 import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
@@ -1198,6 +1199,77 @@ function PersonalitySection({ settings, onSettings }: Pick<Props, "settings" | "
         </label>
       </div>
       <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ personality: d }))} />
+      <LocationCard settings={settings} onSettings={onSettings} />
+    </>
+  );
+}
+
+/** Localização da loja: a IA manda o pino quando o cliente pergunta onde fica; a equipe tem o botão na conversa. */
+function LocationCard({ settings, onSettings }: Pick<Props, "settings" | "onSettings">) {
+  const initial = settings.location ?? { name: "", address: "", latitude: null, longitude: null };
+  const [d, setD] = useDraft(initial);
+  const [link, setLink] = useState(initial.latitude != null ? `${initial.latitude}, ${initial.longitude}` : "");
+  const [checking, setChecking] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const check = async () => {
+    const value = link.trim();
+    if (!value) {
+      setD({ ...d, latitude: null, longitude: null });
+      setMsg(null);
+      return;
+    }
+    setChecking(true);
+    setMsg(null);
+    try {
+      const p = await api.resolveLocation(value);
+      if (p) {
+        setD({ ...d, latitude: Number(p.lat.toFixed(6)), longitude: Number(p.lng.toFixed(6)) });
+        setMsg({ ok: true, text: "Localização encontrada. Confira o pino no mapa e salve." });
+      } else setMsg({ ok: false, text: "Não achei a localização nesse link. Cole o link do Google Maps ou as coordenadas (ex.: -27.5954, -48.5480)." });
+    } catch {
+      setMsg({ ok: false, text: "Não foi possível abrir o link agora. Tente colar as coordenadas." });
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <>
+      <div className="card location-card">
+        <h2 className="card-title">Localização da loja</h2>
+        <p className="card-sub" style={{ marginTop: -4, color: "var(--muted)", fontSize: 12.5 }}>
+          Quando o cliente perguntar onde fica, a IA responde com o endereço e manda o pino no mapa. Na conversa, o botão de pino envia na hora.
+        </p>
+        <div className="stack">
+          <div className="grid-2">
+            <Text label="Nome no pino" value={d.name} placeholder={settings.personality.storeName || "ex.: Loja Exemplo"} onChange={(v) => setD({ ...d, name: v })} />
+            <Text label="Endereço" value={d.address} placeholder="ex.: Rua das Flores, 120 - Centro" onChange={(v) => setD({ ...d, address: v })} />
+          </div>
+          <label className="field">
+            <span>Link do Google Maps ou coordenadas</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="input"
+                value={link}
+                placeholder="Cole o link de compartilhar do Google Maps"
+                onChange={(e) => setLink(e.target.value)}
+                onBlur={() => void check()}
+                onKeyDown={(e) => e.key === "Enter" && void check()}
+              />
+              <button className="btn" onClick={() => void check()} disabled={checking}>
+                {checking ? "Conferindo…" : "Conferir"}
+              </button>
+            </div>
+            <small>No Google Maps, abra a loja, toque em Compartilhar e copie o link.</small>
+          </label>
+          {msg && (
+            <span className={`feedback ${msg.ok ? "ok" : "fail"}`} role="status">
+              {msg.ok && <IconCheck size={14} />} {msg.text}
+            </span>
+          )}
+          {d.latitude != null && d.longitude != null && <MapPreview lat={d.latitude} lng={d.longitude} width={420} height={180} label={d.name || "Loja"} />}
+        </div>
+      </div>
+      <SaveBar dirty={!same(d, initial)} onSave={async () => onSettings(await api.saveSettings({ location: d }))} />
     </>
   );
 }

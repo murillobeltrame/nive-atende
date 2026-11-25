@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { aiConfigured } from "../../../shared/ai-catalog";
 import { Composer } from "../components/Composer";
-import { IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
+import { IconAlert, IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
@@ -367,6 +367,30 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
   const humanMode =
     conversation.state === "humano" || (conversation.aiPausedUntil !== null && conversation.aiPausedUntil > Date.now());
 
+  // "Responder com a IA": só quando a última mensagem é do cliente e ninguém respondeu
+  const lastReal = [...sorted].reverse().find((m) => m.origin !== "sistema" && m.status !== "deleted");
+  const unanswered = lastReal?.origin === "consumidor";
+  const [replying, setReplying] = useState(false);
+  const [replyNote, setReplyNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => setReplyNote(null), [conversation.id]);
+  useEffect(() => {
+    if (!replyNote) return;
+    const t = setTimeout(() => setReplyNote(null), 6000);
+    return () => clearTimeout(t);
+  }, [replyNote]);
+  const replyNow = async () => {
+    setReplying(true);
+    setReplyNote(null);
+    try {
+      const r = await api.replyNow(conversation.id);
+      setReplyNote({ ok: r.sent, text: r.message });
+    } catch (e) {
+      setReplyNote({ ok: false, text: e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "Não foi possível responder." });
+    } finally {
+      setReplying(false);
+    }
+  };
+
   const ident = conversation.verifiedBy
     ? `cliente identificado pelo ${conversation.verifiedBy === "phone" ? "telefone" : "CPF"}`
     : "não identificado";
@@ -379,6 +403,18 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
           <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
           <ContactHeader conversation={conversation} ident={ident} typing={typing} />
         </div>
+        <div className="chat-head-actions">
+        {conversation.state !== "ignorado" && (unanswered || replying) && (
+          <button
+            className="btn-ia"
+            onClick={() => void replyNow()}
+            disabled={replying}
+            title="A IA lê as mensagens do cliente que ficaram sem resposta e responde agora"
+          >
+            <IconSpark size={14} />
+            {replying ? "Respondendo…" : "Responder com a IA"}
+          </button>
+        )}
         {conversation.state !== "ignorado" &&
           (humanMode ? (
             <button className="btn-ia" onClick={toggleOwner} disabled={busy}>
@@ -391,7 +427,14 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
               Assumir conversa
             </button>
           ))}
+        </div>
       </header>
+      {replyNote && (
+        <div className={`chat-head-note ${replyNote.ok ? "ok" : "warn"}`} role="status">
+          {replyNote.ok ? <IconCheck size={14} /> : <IconAlert size={14} />}
+          {replyNote.text}
+        </div>
+      )}
       <div className="messages" ref={listRef} aria-live="polite" aria-busy={loading}>
         {loading && sorted.length === 0 && <div className="empty">Carregando mensagens…</div>}
         {sorted.map((m) => {

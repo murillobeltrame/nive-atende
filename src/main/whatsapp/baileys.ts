@@ -440,6 +440,14 @@ export class BaileysService implements WhatsAppService {
     );
   }
 
+  async sendLocation(jid: string, loc: { latitude: number; longitude: number; name: string; address: string }): Promise<SendResult> {
+    return BaileysService.result(
+      await this.requireSock().sendMessage(jid, {
+        location: { degreesLatitude: loc.latitude, degreesLongitude: loc.longitude, name: loc.name || undefined, address: loc.address || undefined },
+      }),
+    );
+  }
+
   async sendSticker(jid: string, base64: string): Promise<SendResult> {
     return BaileysService.result(await this.requireSock().sendMessage(jid, { sticker: Buffer.from(base64, "base64") }));
   }

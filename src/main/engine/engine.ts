@@ -168,7 +168,7 @@ function hhmmToMinutes(v: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano|resolvido_sem_equipe|ver_formas_pagamento|cancelar_reserva)\b(\([^)]*\))?\)?\.?/g;
+const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano|resolvido_sem_equipe|ver_formas_pagamento|cancelar_reserva|enviar_localizacao)\b(\([^)]*\))?\)?\.?/g;
 
 /** Texto final da IA para o WhatsApp, sem nome de ferramenta que ela às vezes escreve na resposta. */
 export function cleanReply(text: string): string {
@@ -195,6 +195,8 @@ export class Engine extends EventEmitter<EngineEvents> {
   private readonly timers = new Map<string, { timer: unknown; firstAt: number }>();
   private readonly running = new Map<string, Promise<void>>();
   private readonly rerun = new Set<string>();
+  /** Conversas em que o lojista pediu "Responder com a IA" agora. */
+  private readonly forcedReply = new Set<string>();
   /** Nova tentativa agendada depois de falha passageira da IA (timer null = tentativa em andamento). */
   private readonly retries = new Map<string, { timer: unknown; count: number }>();
   /** Até quando o contato aparece "digitando…"/"gravando áudio…" (WhatsApp embutido). */
@@ -281,6 +283,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       hasMedia: ["audio", "image", "video", "document", "sticker"].includes(m.kind),
       fileName: m.fileName,
       durationSec: m.durationSec,
+      geo: m.geo ?? null,
       createdAt,
       status: "received",
       processed: ignored,
@@ -342,6 +345,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       hasMedia: ["audio", "image", "video", "document", "sticker"].includes(m.kind),
       fileName: m.fileName,
       durationSec: m.durationSec,
+      geo: m.geo ?? null,
       createdAt: this.waToLocal(m.timestamp),
       status: "sent",
     });
@@ -453,6 +457,45 @@ export class Engine extends EventEmitter<EngineEvents> {
     return wait;
   }
 
+  /**
+   * Botão "Responder com a IA": a IA lê de novo as mensagens do cliente que ficaram sem resposta (chegaram
+   * com o programa fechado, fora do horário, com a IA pausada…) e responde agora. Pedido do lojista,
+   * então passa por cima da pausa, do horário, da janela de mensagens antigas e do atendimento desligado.
+   */
+  async replyNow(conversationId: string): Promise<{ sent: boolean; message: string }> {
+    const store = this.deps.store;
+    const conv = store.getConversation(conversationId);
+    if (!conv) throw new Error("Conversa não encontrada.");
+    if (conv.state === "ignorado") throw new Error("Este número está na lista de ignorados.");
+    const blocked = this.deps.blockedReason();
+    if (blocked) throw new Error(`Não dá para responder agora: ${blocked}.`);
+    if (this.running.has(conversationId)) throw new Error("A IA já está respondendo esta conversa.");
+    const recent = store.listMessages(conversationId, 200).filter((m) => m.origin !== "sistema" && m.status !== "deleted");
+    const pending: ChatMessage[] = [];
+    for (let i = recent.length - 1; i >= 0 && recent[i]!.origin === "consumidor"; i--) pending.unshift(recent[i]!);
+    if (!pending.length) throw new Error("Não há mensagem do cliente sem resposta: a última mensagem já é da loja.");
+
+    this.cancelSchedule(conversationId);
+    const updated = store.updateConversation(conversationId, {
+      aiPausedUntil: null,
+      ...(conv.state === "humano" ? { state: "ia" as const, handoffReason: null } : {}),
+    });
+    this.emit("conversation", updated);
+    store.markUnprocessed(pending.map((m) => m.id));
+    this.forcedReply.add(conversationId);
+    const startedAt = this.now();
+    try {
+      await this.process(conversationId);
+    } finally {
+      this.forcedReply.delete(conversationId);
+    }
+    const sent = store.listMessages(conversationId, 50).some((m) => m.origin === "ia" && m.createdAt >= startedAt);
+    const after = store.getConversation(conversationId)!;
+    if (sent) return { sent: true, message: "A IA respondeu o cliente." };
+    if (after.state === "precisa_humano" && after.handoffReason) return { sent: false, message: `A IA não respondeu: ${after.handoffReason}.` };
+    return { sent: false, message: "A IA não conseguiu responder agora. Tente de novo em instantes." };
+  }
+
   /** Processa uma conversa (uma de cada vez por conversa). */
   process(conversationId: string): Promise<void> {
     const current = this.running.get(conversationId);
@@ -519,9 +562,11 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!pending.length) return;
     const ids = pending.map((m) => m.id);
 
+    // pedido do lojista pelo botão "Responder com a IA": ignora pausa, horário e janela de mensagens antigas
+    const forced = this.forcedReply.has(conversationId);
     if (conv.state === "ignorado") return store.markProcessed(ids);
-    if (!s.attendance.autoEnabled) return store.markProcessed(ids);
-    if (conv.aiPausedUntil && conv.aiPausedUntil > this.now()) return store.markProcessed(ids);
+    if (!forced && !s.attendance.autoEnabled) return store.markProcessed(ids);
+    if (!forced && conv.aiPausedUntil && conv.aiPausedUntil > this.now()) return store.markProcessed(ids);
     // Encaminhada para a equipe (triagem): a IA continua atendendo e analisa a nova mensagem, mas a pendência
     // segue marcada até alguém da equipe responder, marcar como resolvida ou a própria IA resolver.
     // Pendência muito antiga sem ninguém mexer: o cliente voltou com outro assunto, recomeça do zero.
@@ -538,13 +583,13 @@ export class Engine extends EventEmitter<EngineEvents> {
 
     // Mensagens antigas (chegaram com o app desligado): não responde automaticamente.
     const windowMs = s.attendance.catchUpWindowMinutes * 60_000;
-    const fresh = pending.filter((m) => this.now() - m.createdAt <= windowMs);
+    const fresh = forced ? pending : pending.filter((m) => this.now() - m.createdAt <= windowMs);
     if (!fresh.length) {
       store.markProcessed(ids);
       return this.handoff(conv.id, "mensagem recebida com o atendimento parado", false);
     }
 
-    if (!isWithinBusinessHours(s, this.now())) {
+    if (!forced && !isWithinBusinessHours(s, this.now())) {
       store.markProcessed(ids);
       const last = store.getOutOfHoursNoticeAt(conv.id);
       if ((!last || this.now() - last > OUT_OF_HOURS_NOTICE_INTERVAL_MS) && !this.isRecentlyPersonal(conv.id)) {
@@ -557,13 +602,13 @@ export class Engine extends EventEmitter<EngineEvents> {
     // limite diário de respostas da IA por conversa
     const today = localDay(this.now());
     const aiToday = store.listMessages(conv.id, 200).filter((m) => m.origin === "ia" && localDay(m.createdAt) === today).length;
-    if (aiToday >= s.ai.maxAiRepliesPerConversationPerDay) {
+    if (!forced && aiToday >= s.ai.maxAiRepliesPerConversationPerDay) {
       store.markProcessed(ids);
       return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa", false, { pause: true });
     }
 
     // conversa pessoal do dono com esse contato? então não interfere
-    if (s.attendance.onlyStoreTopics && !this.inActiveAiConversation(conv.id)) {
+    if (!forced && s.attendance.onlyStoreTopics && !this.inActiveAiConversation(conv.id)) {
       const verdict = await this.checkTopic(conv.id);
       if (verdict && !verdict.store) {
         store.markProcessed(ids);
@@ -724,6 +769,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     // crediário é sempre decisão da equipe, mesmo que a IA não tenha chamado a transferência
     const askedStoreCredit = fresh.some((m) => STORE_CREDIT_RE.test(store.getMessage(m.id)?.transcript ?? m.text ?? ""));
     if (askedStoreCredit && !state.handoffReason) state.handoffReason = "cliente quer crediário";
+    if (state.sendLocation) await this.sendStoreLocation(conv.id, "ia").catch((e) => this.log("warn", "falha ao enviar a localização", e));
     if (state.triageResolved && triage && !state.handoffReason) this.resolveTriage(conv.id, state.triageResolved);
     if (state.handoffReason) return this.handoff(conv.id, state.handoffReason, false);
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
@@ -1120,7 +1166,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
     if (triage) messages.push({ role: "system", content: triageInstruction(triage) });
     if (extraInstruction) messages.push({ role: "system", content: extraInstruction });
-    const tools = toolsFor(s, readOnly, Boolean(triage));
+    const tools = toolsFor(s, readOnly, Boolean(triage), Boolean(this.storeLocation()));
     const state = newRunState();
     let inTok = 0;
     let outTok = 0;
@@ -1330,6 +1376,39 @@ export class Engine extends EventEmitter<EngineEvents> {
     );
   }
 
+  /** A localização salva nas Configurações, ou null se a loja não cadastrou. */
+  storeLocation(): { latitude: number; longitude: number; name: string; address: string } | null {
+    const l = this.s.location;
+    if (!l || l.latitude == null || l.longitude == null) return null;
+    return { latitude: l.latitude, longitude: l.longitude, name: l.name.trim() || this.s.personality.storeName.trim(), address: l.address.trim() };
+  }
+
+  /** Envia o pino da loja: pela IA (quando o cliente pergunta onde fica) ou pelo botão da equipe. */
+  async sendStoreLocation(conversationId: string, by: "ia" | "humano", author = ""): Promise<ChatMessage> {
+    const loc = this.storeLocation();
+    if (!loc) throw new Error("Cadastre a localização da loja em Configurações → Como a loja fala.");
+    const wa = this.deps.wa;
+    if (!wa.sendLocation) throw new Error("Este WhatsApp não envia localização.");
+    const text = [loc.name, loc.address].filter(Boolean).join(" · ") || null;
+    const geo = { lat: loc.latitude, lng: loc.longitude };
+    if (by === "humano") {
+      return this.sendHuman(conversationId, { kind: "location", text, geo }, author, (jid) => wa.sendLocation!(jid, loc));
+    }
+    const store = this.deps.store;
+    const msg = store.insertMessage({ conversationId, origin: "ia", kind: "location", text, geo, status: "pending", createdAt: this.stamp(conversationId) });
+    this.emit("message", msg);
+    try {
+      const r = await this.withInFlight(() => wa.sendLocation!(conversationId, loc));
+      const sent = store.updateMessage(msg.id, { status: "sent", waMessageId: r.waMessageId });
+      this.emit("message", sent);
+      this.emit("conversation", store.updateConversation(conversationId, { lastMessageAt: this.now(), lastPreview: "📍 Localização da loja", lastOrigin: "ia" }));
+      return sent;
+    } catch (e) {
+      this.emit("message", store.updateMessage(msg.id, { status: "failed" }));
+      throw e;
+    }
+  }
+
   async sendHumanAudio(conversationId: string, base64: string, mime: string, author: string): Promise<ChatMessage> {
     return this.sendHuman(
       conversationId,
@@ -1353,7 +1432,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private async sendHuman(
     conversationId: string,
-    content: { kind: ChatMessage["kind"]; text: string | null; mediaMime?: string; fileName?: string; data?: Buffer },
+    content: { kind: ChatMessage["kind"]; text: string | null; mediaMime?: string; fileName?: string; data?: Buffer; geo?: { lat: number; lng: number } },
     author: string,
     send: (jid: string) => Promise<{ waMessageId: string | null }>,
   ): Promise<ChatMessage> {
@@ -1368,6 +1447,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       mediaMime: content.mediaMime ?? null,
       hasMedia: Boolean(content.data),
       fileName: content.fileName ?? null,
+      geo: content.geo ?? null,
       status: "pending",
       author: author || "Equipe",
       createdAt: this.stamp(conversationId),

@@ -208,6 +208,10 @@ export class FakeWa implements WhatsAppGateway {
     this.sent.push({ type: "audio", jid, body: "" });
     return this.next();
   }
+  async sendLocation(jid: string, loc: { latitude: number; longitude: number; name: string; address: string }): Promise<SendResult> {
+    this.sent.push({ type: "location", jid, body: `${loc.latitude},${loc.longitude} ${loc.name}` });
+    return this.next();
+  }
   async sendSticker(jid: string): Promise<SendResult> {
     this.sent.push({ type: "sticker", jid, body: "" });
     return this.next();

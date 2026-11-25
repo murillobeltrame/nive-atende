@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Conversation } from "../../../shared/types";
 import { api } from "../lib/api";
 import { fileToBase64, hhmm } from "../lib/format";
-import { IconClip, IconMic, IconSend, IconX } from "./Icons";
+import { IconClip, IconMapPin, IconMic, IconSend, IconX } from "./Icons";
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024;
 
@@ -26,9 +26,15 @@ export function Composer({ conversation }: { conversation: Conversation }) {
   const recRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; cancel: boolean; stream: MediaStream } | null>(null);
   const timerRef = useRef<number | null>(null);
 
+  // botão de localização só aparece com a localização da loja cadastrada
+  const [hasLocation, setHasLocation] = useState(false);
   useEffect(() => {
     setText("");
     setError(null);
+    void api
+      .getSettings()
+      .then((s) => setHasLocation(s.location?.latitude != null))
+      .catch(() => undefined);
   }, [conversation.id]);
 
   useEffect(() => {
@@ -182,6 +188,17 @@ export function Composer({ conversation }: { conversation: Conversation }) {
             >
               <IconClip size={21} />
             </button>
+            {hasLocation && (
+              <button
+                className="icon-btn"
+                onClick={() => void run(() => api.sendStoreLocation(conversation.id))}
+                aria-label="Enviar a localização da loja"
+                title="Enviar a localização da loja"
+                disabled={sending}
+              >
+                <IconMapPin size={20} />
+              </button>
+            )}
             <input
               ref={fileRef}
               type="file"

@@ -120,6 +120,10 @@ export class EvolutionService implements WhatsAppService {
   sendAudio(jid: string, base64: string): Promise<SendResult> {
     return this.deps.client.sendAudio(jid, base64);
   }
+  sendLocation(jid: string, loc: { latitude: number; longitude: number; name: string; address: string }): Promise<SendResult> {
+    return this.deps.client.sendLocation(jid, loc);
+  }
+
   sendSticker(jid: string, base64: string): Promise<SendResult> {
     return this.deps.client.sendSticker(jid, base64);
   }

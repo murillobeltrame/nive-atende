@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MapPreview } from "./MapPreview";
 import type { ChatMessage } from "../../../shared/types";
 import { api } from "../lib/api";
 import { hhmm } from "../lib/format";
@@ -164,12 +165,15 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
           </div>
         </div>
       )}
-      {m.kind === "location" && (
-        <div className="doc">
-          <IconMapPin size={20} />
-          <span>Localização compartilhada</span>
-        </div>
-      )}
+      {m.kind === "location" &&
+        (m.geo ? (
+          <MapPreview lat={m.geo.lat} lng={m.geo.lng} label={m.text ?? undefined} />
+        ) : (
+          <div className="doc">
+            <IconMapPin size={20} />
+            <span>Localização compartilhada</span>
+          </div>
+        ))}
       {m.kind === "contact" && (
         <div className="doc">
           <IconFile size={20} />

@@ -24,6 +24,7 @@ import { registeredToJid, digitsOnly } from "./engine/phone";
 import { initLog, log, logDir } from "./log";
 import { createSecretBox } from "./secret-box";
 import { autoUpdater } from "electron-updater";
+import { mapTiles, resolveLocation } from "./maps";
 import { Updater, type AutoBackend } from "./updater";
 
 const isDev = Boolean(process.env.NIVE_ATENDE_DEV_URL);
@@ -119,6 +120,11 @@ const gateway: WhatsAppGateway = {
   sendMedia: (...a) => wa().sendMedia(...a),
   sendAudio: (...a) => wa().sendAudio(...a),
   sendSticker: (...a) => wa().sendSticker(...a),
+  sendLocation: (jid, loc) => {
+    const svc = wa();
+    if (!svc.sendLocation) throw new Error("Este WhatsApp não envia localização.");
+    return svc.sendLocation(jid, loc);
+  },
   sendPresence: (...a) => wa().sendPresence(...a),
   getMediaBase64: (...a) => wa().getMediaBase64(...a),
   deleteForEveryone: (...a) => wa().deleteForEveryone(...a),
@@ -673,6 +679,9 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   sendMedia: (id, media) => engine.sendHumanMedia(id, media, settings.get().app.operatorName),
   sendAudio: (id, base64, mime) => engine.sendHumanAudio(id, base64, mime, settings.get().app.operatorName),
   resendSticker: (id, messageId) => engine.resendSticker(id, messageId, settings.get().app.operatorName),
+  sendStoreLocation: (id) => engine.sendStoreLocation(id, "humano", settings.get().app.operatorName),
+  resolveLocation: (text) => resolveLocation(text),
+  mapTiles: (lat, lng) => mapTiles({ lat, lng }, app.getVersion()),
   deleteMessage: (messageId) => engine.deleteMessage(messageId),
   deleteConversation: async (conversationId) => {
     engine.deleteConversation(conversationId);
@@ -704,6 +713,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   takeOver: (id) => engine.takeOver(id, settings.get().app.operatorName),
   returnToAi: (id) => engine.returnToAi(id),
   suggestReply: (id) => engine.suggestReply(id),
+  replyNow: (id) => engine.replyNow(id),
   getCustomerNotes: async (id) => engine.getCustomerNotes(id),
   removeCustomerNote: async (id, note) => engine.removeCustomerNote(id, note),
   listNicknames: async () => engine.listNicknames(),

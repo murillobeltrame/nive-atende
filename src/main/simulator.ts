@@ -51,6 +51,9 @@ class SimGateway implements WhatsAppGateway {
   async sendSticker() {
     return this.next();
   }
+  async sendLocation() {
+    return this.next();
+  }
   async sendPresence() {}
   async getMediaBase64() {
     return null;

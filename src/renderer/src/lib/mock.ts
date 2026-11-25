@@ -133,6 +133,7 @@ export function createMockApi(): NiveAtendeApi {
     },
     reservation: { autoEnabled: true, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true, reminder: true, reminderHours: 3 },
     accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
+    location: { name: "Loja Exemplo", address: "Rua das Flores, 120 - Centro", latitude: -27.5954, longitude: -48.548 },
     personality: {
       storeName: "Loja Exemplo",
       tone: "proximo",
@@ -749,6 +750,33 @@ export function createMockApi(): NiveAtendeApi {
       ev.message.emit({ ...m });
       ev.conversation.emit({ ...c });
       return { ...c };
+    },
+    async replyNow(conversationId) {
+      await delay(900);
+      const c = findConv(conversationId);
+      const m = msg({ conversationId, origin: "ia", kind: "text", createdAt: Date.now(), text: "Oi! Desculpa a demora. Temos sim, quer que eu separe?" });
+      messages.push(m);
+      ev.message.emit({ ...m });
+      c.aiPausedUntil = null;
+      ev.conversation.emit({ ...c });
+      return { sent: true, message: "A IA respondeu o cliente." };
+    },
+    async sendStoreLocation(conversationId) {
+      await delay(400);
+      const l = settings.location;
+      const m = msg({ conversationId, origin: "humano_app", kind: "location", createdAt: Date.now(), text: [l.name, l.address].filter(Boolean).join(" · "), geo: { lat: l.latitude ?? -27.6, lng: l.longitude ?? -48.5 } });
+      messages.push(m);
+      ev.message.emit({ ...m });
+      return { ...m };
+    },
+    async resolveLocation(text) {
+      const m = text.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+      return m ? { lat: Number(m[1]), lng: Number(m[2]) } : { lat: -27.5954, lng: -48.548 };
+    },
+    async mapTiles() {
+      // sem internet na prévia: grade cinza com o ponto no meio
+      const tile = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e8eef0"/><path d="M0 128h256M128 0v256" stroke="#fff" stroke-width="10"/></svg>');
+      return { tiles: [[tile, tile, tile], [tile, tile, tile], [tile, tile, tile]], pointX: 384, pointY: 384 };
     },
     async suggestReply(conversationId) {
       await delay(700);

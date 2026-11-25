@@ -186,6 +186,11 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
       additionalProperties: false,
     },
   },
+  enviar_localizacao: {
+    name: "enviar_localizacao",
+    description: "Envia ao cliente o pino com a localização da loja no WhatsApp (ele abre no mapa do celular). Use quando perguntar onde fica, o endereço ou como chegar.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
   ver_formas_pagamento: {
     name: "ver_formas_pagamento",
     description: "Lista as formas de pagamento aceitas pela loja, direto do sistema. Use sempre que o cliente perguntar como pode pagar (pix, cartão, dinheiro…).",
@@ -219,11 +224,12 @@ const ACTIVITY: Record<string, string> = {
   resolvido_sem_equipe: "Resolvendo a pendência…",
   ver_formas_pagamento: "Conferindo as formas de pagamento…",
   cancelar_reserva: "Cancelando a reserva…",
+  enviar_localizacao: "Separando a localização da loja…",
   anotar_preferencia: "Anotando a preferência do cliente…",
   avisar_quando_chegar: "Registrando o aviso de chegada…",
 };
 
-export function toolsFor(settings: AppSettings, readOnly = false, triage = false): AiToolDef[] {
+export function toolsFor(settings: AppSettings, readOnly = false, triage = false, hasLocation = false): AiToolDef[] {
   const names = ["buscar_produto", "ver_promocoes", "ver_catalogo", "calcular_total"];
   if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto", "cancelar_reserva");
   if (settings.accounts.enabled) {
@@ -234,6 +240,7 @@ export function toolsFor(settings: AppSettings, readOnly = false, triage = false
   names.push("ver_formas_pagamento");
   if (!readOnly) names.push("anotar_preferencia", "aprender_apelido", "transferir_para_humano");
   if (!readOnly && triage) names.push("resolvido_sem_equipe");
+  if (!readOnly && hasLocation) names.push("enviar_localizacao");
   return names.map((n) => TOOL_DEFS[n]!);
 }
 
@@ -290,6 +297,8 @@ export interface ToolRunState {
   handoffRefused: boolean;
   /** A IA resolveu sozinha o assunto que estava com a equipe (resumo). */
   triageResolved?: string | null;
+  /** Enviar o pino da localização da loja depois da resposta. */
+  sendLocation?: boolean;
 }
 
 export function newRunState(): ToolRunState {
@@ -775,6 +784,12 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       const resumo = guardText(str(args.resumo)).safeText.replace(/\s+/g, " ").trim().slice(0, 120) || "assunto resolvido";
       state.triageResolved = resumo;
       return { resultado: "PENDENCIA_ENCERRADA", instrucao: "Continue a conversa normalmente, sem comentar isso com o cliente." };
+    }
+
+    case "enviar_localizacao": {
+      state.sendLocation = true;
+      state.actions.push({ label: "Enviou a localização da loja", kind: "info" });
+      return { resultado: "LOCALIZACAO_SERA_ENVIADA", instrucao: "O pino vai logo depois da sua mensagem. Escreva o endereço numa frase curta (se tiver) sem dizer 'segue a localização abaixo'." };
     }
 
     case "cancelar_reserva": {

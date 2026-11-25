@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   reservation: { autoEnabled: false, validityHours: 24, maxQtyPerOrder: 3, requireCustomer: false, cancelExpiredDrafts: true, showDeadline: true, reminder: true, reminderHours: 3 },
   accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
+  location: { name: "", address: "", latitude: null, longitude: null },
   personality: { storeName: "", tone: "proximo", emojis: true, signature: "", presentAsAssistant: false, context: "" },
   ai: { provider: "openai", monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
   audio: { transcribe: true, maxSeconds: 120 },

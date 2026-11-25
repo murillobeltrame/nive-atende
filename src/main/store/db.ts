@@ -143,6 +143,7 @@ export function localDay(ts: number): string {
 
 export interface NewMessage {
   conversationId: string;
+  geo?: { lat: number; lng: number } | null;
   waMessageId?: string | null;
   origin: MessageOrigin;
   kind: MessageKind;
@@ -186,6 +187,8 @@ export class Store {
     if (!convCols.includes("push_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN push_name TEXT");
     if (!convCols.includes("saved_name")) this.db.exec("ALTER TABLE conversations ADD COLUMN saved_name TEXT");
     if (!cols.includes("customer_candidates")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_candidates TEXT");
+    const msgCols = (this.db.prepare("PRAGMA table_info(messages)").all() as Row[]).map((c) => str(c.name));
+    if (!msgCols.includes("geo")) this.db.exec("ALTER TABLE messages ADD COLUMN geo TEXT");
     if (!cols.includes("customer_status")) this.db.exec("ALTER TABLE reservations ADD COLUMN customer_status TEXT NOT NULL DEFAULT 'none'");
   }
 
@@ -386,6 +389,7 @@ export class Store {
       status: str(r.status) as MessageStatus,
       author: strOrNull(r.author),
       eventType: strOrNull(r.event_type) as SystemEventType | null,
+      geo: parseGeo(r.geo),
     };
   }
 
@@ -394,8 +398,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO messages(id, conversation_id, wa_message_id, origin, kind, text, transcript, media_mime,
-          has_media, file_name, duration_sec, created_at, status, author, event_type, processed)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          has_media, file_name, duration_sec, created_at, status, author, event_type, processed, geo)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id,
@@ -414,6 +418,7 @@ export class Store {
         m.author ?? null,
         m.eventType ?? null,
         m.processed === false ? 0 : 1,
+        m.geo ? `${m.geo.lat},${m.geo.lng}` : null,
       );
     return this.getMessage(id)!;
   }
@@ -472,6 +477,12 @@ export class Store {
   conversationsWithUnprocessed(): string[] {
     const rows = this.db.prepare("SELECT DISTINCT conversation_id AS id FROM messages WHERE processed = 0").all() as Row[];
     return rows.map((r) => str(r.id));
+  }
+
+  /** Volta mensagens para a fila do motor (o lojista pediu para a IA responder agora). */
+  markUnprocessed(ids: string[]): void {
+    const stmt = this.db.prepare("UPDATE messages SET processed = 0 WHERE id = ?");
+    for (const id of ids) stmt.run(id);
   }
 
   markProcessed(ids: string[]): void {
@@ -685,4 +696,10 @@ export class Store {
       result: str(r.result),
     }));
   }
+}
+
+function parseGeo(v: unknown): { lat: number; lng: number } | null {
+  if (typeof v !== "string" || !v) return null;
+  const [lat, lng] = v.split(",").map(Number);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat: lat!, lng: lng! } : null;
 }

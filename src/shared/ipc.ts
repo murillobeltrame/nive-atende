@@ -65,6 +65,12 @@ export interface NiveAtendeApi {
   sendText(conversationId: string, text: string): Promise<ChatMessage>;
   sendMedia(conversationId: string, media: OutgoingMedia): Promise<ChatMessage>;
   sendAudio(conversationId: string, base64: string, mime: string): Promise<ChatMessage>;
+  /** Envia o pino da localização da loja salva nas Configurações. */
+  sendStoreLocation(conversationId: string): Promise<ChatMessage>;
+  /** Lê coordenadas de um link do Google Maps (inclusive o curto) ou de "lat, lng". */
+  resolveLocation(text: string): Promise<{ lat: number; lng: number } | null>;
+  /** Mapinha (tiles do OpenStreetMap) em volta do ponto, para mostrar no app. */
+  mapTiles(lat: number, lng: number): Promise<{ tiles: string[][]; pointX: number; pointY: number }>;
   resendSticker(conversationId: string, messageId: string): Promise<ChatMessage>;
   /** "Apagar para todos": só mensagens enviadas pela loja (IA ou equipe). */
   deleteMessage(messageId: string): Promise<ChatMessage>;
@@ -73,6 +79,8 @@ export interface NiveAtendeApi {
   takeOver(conversationId: string): Promise<Conversation>;
   returnToAi(conversationId: string): Promise<Conversation>;
   suggestReply(conversationId: string): Promise<string>;
+  /** A IA lê as mensagens do cliente sem resposta e responde agora (mesmo com pausa ou programa fechado na hora). */
+  replyNow(conversationId: string): Promise<{ sent: boolean; message: string }>;
 
   /** Preferências que a IA anotou sobre o cliente. */
   getCustomerNotes(conversationId: string): Promise<string[]>;
@@ -170,12 +178,16 @@ export const RPC_METHODS = [
   "sendText",
   "sendMedia",
   "sendAudio",
+  "sendStoreLocation",
+  "resolveLocation",
+  "mapTiles",
   "resendSticker",
   "deleteMessage",
   "deleteConversation",
   "takeOver",
   "returnToAi",
   "suggestReply",
+  "replyNow",
   "getCustomerNotes",
   "removeCustomerNote",
   "listNicknames",

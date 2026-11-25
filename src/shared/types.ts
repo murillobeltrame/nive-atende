@@ -43,6 +43,8 @@ export interface ChatMessage {
   author: string | null;
   /** Para origin = "sistema": tipo do evento. */
   eventType: SystemEventType | null;
+  /** Coordenadas de uma mensagem de localização (para o mapinha). */
+  geo?: { lat: number; lng: number } | null;
 }
 
 export type SystemEventType =
@@ -215,6 +217,8 @@ export interface AppSettings {
     requireCustomer: boolean;
   };
   accounts: { enabled: boolean; secondFactor: SecondFactor; showCharges: boolean };
+  /** Localização da loja, enviada pelo WhatsApp quando o cliente pergunta onde fica. */
+  location: { name: string; address: string; latitude: number | null; longitude: number | null };
   personality: {
     storeName: string;
     tone: Tone;

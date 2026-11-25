@@ -20,6 +20,8 @@ export interface WhatsAppGateway {
   sendMedia(jid: string, media: { mediatype: "image" | "video" | "document"; mimetype: string; media: string; fileName?: string; caption?: string }): Promise<SendResult>;
   sendAudio(jid: string, base64: string): Promise<SendResult>;
   sendSticker(jid: string, base64: string): Promise<SendResult>;
+  /** Envia um pino de localização (o cliente abre no mapa do celular). */
+  sendLocation?(jid: string, loc: { latitude: number; longitude: number; name: string; address: string }): Promise<SendResult>;
   sendPresence(jid: string, presence: "composing" | "recording" | "paused", delayMs: number): Promise<void>;
   getMediaBase64(waMessageId: string, remoteJid: string, fromMe: boolean): Promise<{ base64: string; mimetype: string } | null>;
   /** Apaga para todos uma mensagem enviada por este número. */
@@ -171,6 +173,11 @@ export class EvolutionClient implements WhatsAppGateway {
 
   async sendSticker(jid: string, base64: string): Promise<SendResult> {
     const data = await this.request("POST", `/message/sendSticker/${this.instance}`, { number: jid, sticker: base64 }, 60000);
+    return { waMessageId: extractId(data) };
+  }
+
+  async sendLocation(jid: string, loc: { latitude: number; longitude: number; name: string; address: string }): Promise<SendResult> {
+    const data = await this.request("POST", `/message/sendLocation/${this.instance}`, { number: jid, ...loc });
     return { waMessageId: extractId(data) };
   }
 

@@ -56,6 +56,13 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     `Agora são ${ctx.now.toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}.`,
     "",
     ...(describeBusinessHours(s) ? [`Horário de funcionamento da loja: ${describeBusinessHours(s)}.`] : []),
+    ...(s.location?.latitude != null
+      ? [
+          `Localização da loja: ${[s.location.name, s.location.address].filter((x) => x?.trim()).join(" · ") || "cadastrada"}. Quando o cliente perguntar onde fica, o endereço ou como chegar, responda com o endereço e use enviar_localizacao para mandar o pino no mapa.`,
+        ]
+      : s.location?.address?.trim()
+        ? [`Endereço da loja: ${s.location.address.trim()}.`]
+        : []),
     "",
     "Leia toda a conversa acima antes de responder: lembre o que o cliente já disse (para quem é, gosto, orçamento, tamanho) e não pergunte de novo o que ele já respondeu.",
     "",
