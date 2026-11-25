@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.12 — 2026-11-25
+
+- **IA responde pedidos com faixa de preço:** quando o cliente perguntava algo como "o que tem de whisky até 100 reais?", a IA repetia "até R$ 100,00" na resposta e o app achava que era um preço inventado, passando a conversa para "precisa de você". Agora o valor que o próprio cliente escreveu, com ou sem "R$" ("até 100 reais", "uns 50 conto", "até cem"), é aceito e a IA responde normalmente. Preço de produto continua precisando vir do cadastro.
+
 ## v0.3.11 — 2026-11-25
 
 - **IA volta a responder com o GPT-6.1 Terra:** com esse modelo (e outros novos da OpenAI), toda conversa ia para "precisa de você" com "erro ao gerar resposta", porque a OpenAI recusava as buscas de produto e reservas com o raciocínio ligado. Agora o app desliga o raciocínio só quando o modelo exige e a IA responde normalmente.
