@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.3.14 — 2026-11-25
+
+- **IA responde sobre promoções:** "tem promoção de vodka e red bull?" ia para "precisa de você". Agora a IA consulta no Nive ERP tudo o que está em promoção (preço de/por, leve 3 pague 2, X por R$ Y, desconto por quantidade, brinde acima de um valor e preço de atacado) e responde com a regra e os preços. Se não tiver promoção do que o cliente pediu, ela avisa e já mostra as opções com o preço normal.
+- **Produto em promoção em destaque:** quando o cliente pergunta por um produto que está em promoção, a IA já fala do preço promocional, e o total ("quanto fica 2?") sai com o preço da promoção.
+- **Menos passagem para humano em pergunta de produto:** se a IA tentar chamar a equipe por causa de produto, preço, estoque ou promoção, o app manda ela consultar o sistema e responder primeiro. Desconto, troca, reclamação e pedido para falar com uma pessoa continuam indo para a equipe.
+- Precisa do Nive ERP atualizado hoje (já no ar); antes disso a IA responde com os preços normais.
+
 ## v0.3.13 — 2026-11-25
 
 - **Menos conversas indo para "precisa de você" à toa:** quando a resposta da IA tinha um valor que não veio do sistema, ou ficava sem resposta, a conversa ia direto para a equipe. Agora a IA refaz a resposta uma vez, já sabendo o que corrigir, e só passa para humano se errar de novo.
