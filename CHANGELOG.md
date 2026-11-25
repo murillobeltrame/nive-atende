@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.11 — 2026-11-25
+
+- **IA volta a responder com o GPT-6.1 Terra:** com esse modelo (e outros novos da OpenAI), toda conversa ia para "precisa de você" com "erro ao gerar resposta", porque a OpenAI recusava as buscas de produto e reservas com o raciocínio ligado. Agora o app desliga o raciocínio só quando o modelo exige e a IA responde normalmente.
+
 ## v0.3.10 — 2026-11-25
 
 - **Motivo real quando a IA falha:** quando a plataforma de IA recusava a resposta, a conversa ia para "precisa de você" só com "erro ao gerar resposta". Agora o motivo vem junto (por exemplo, modelo não liberado na conta ou imagem que não abriu), para saber o que ajustar.
