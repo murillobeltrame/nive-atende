@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## v0.3.13 — 2026-11-25
+
+- **Menos conversas indo para "precisa de você" à toa:** quando a resposta da IA tinha um valor que não veio do sistema, ou ficava sem resposta, a conversa ia direto para a equipe. Agora a IA refaz a resposta uma vez, já sabendo o que corrigir, e só passa para humano se errar de novo.
+- **Perguntas simples respondidas direto:** horário, preço, "tem?", "quanto fica?" e dúvidas da loja escritas no texto "Sobre a loja" são respondidas pela IA, sem chamar a equipe. Se a loja tem horário configurado, a IA já sabe informar.
+- **Faixa de preço:** "o que tem de whisky até 100 reais?" traz só o que cabe no valor, do mais barato ao mais caro. Se nada couber, mostra os mais em conta.
+- **Totais certos:** "quanto fica 2 cervejas e um gelo?" é calculado com os preços do sistema, sem conta de cabeça.
+- **Conveniência, mercado e bebidas sem enrolação:** nesses ramos a IA mostra as opções com preço logo de cara, sem perguntar "é para você ou para presente?".
+- **Mais paciência para entender:** gíria e erro de digitação ("qnto ta a coca 2l", "whiskey") viram busca; se não entender, a IA pergunta de novo antes de chamar a equipe.
+- **Sem nome técnico na mensagem:** às vezes aparecia "transferir_para_humano" no fim do texto enviado ao cliente; não aparece mais.
+
 ## v0.3.12 — 2026-11-25
 
 - **IA responde pedidos com faixa de preço:** quando o cliente perguntava algo como "o que tem de whisky até 100 reais?", a IA repetia "até R$ 100,00" na resposta e o app achava que era um preço inventado, passando a conversa para "precisa de você". Agora o valor que o próprio cliente escreveu, com ou sem "R$" ("até 100 reais", "uns 50 conto", "até cem"), é aceito e a IA responde normalmente. Preço de produto continua precisando vir do cadastro.
