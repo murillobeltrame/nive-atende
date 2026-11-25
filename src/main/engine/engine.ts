@@ -21,7 +21,7 @@ import type { ProductNickname } from "../../shared/types";
 import { newRunState, runTool, toolsFor, type ToolRunState } from "../ai/tools";
 import type { Transcoder } from "../audio/transcode";
 import { IdentityService } from "./identity";
-import { extractMoneyValues, formatBRL, guardText } from "./guard";
+import { extractCustomerMoneyValues, extractMoneyValues, formatBRL, guardText } from "./guard";
 import { localDay } from "../store/db";
 import { callerNational, digitsOnly, registeredToJid, samePhone } from "./phone";
 
@@ -958,7 +958,10 @@ export class Engine extends EventEmitter<EngineEvents> {
   private findUnconfirmedMoney(conversationId: string, reply: string, state: ToolRunState): number[] {
     const allowed = new Set(state.money);
     for (const m of this.deps.store.listMessages(conversationId, 30)) {
-      for (const v of extractMoneyValues(m.text ?? m.transcript ?? "")) allowed.add(v);
+      const text = m.text ?? m.transcript ?? "";
+      // o cliente escreve valor de qualquer jeito ("até 100 reais"); a IA pode repetir o que ele disse
+      const values = m.origin === "consumidor" ? extractCustomerMoneyValues(text) : extractMoneyValues(text);
+      for (const v of values) allowed.add(v);
     }
     return extractMoneyValues(reply).filter((v) => !allowed.has(v));
   }

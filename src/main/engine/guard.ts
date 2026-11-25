@@ -107,6 +107,43 @@ export function extractMoneyValues(text: string): number[] {
   return out;
 }
 
+const NUMBER_WORDS: Record<string, number> = {
+  cem: 100, sem: 100, cento: 100, duzentos: 200, trezentos: 300, quatrocentos: 400, quinhentos: 500,
+  seiscentos: 600, setecentos: 700, oitocentos: 800, novecentos: 900, mil: 1000,
+};
+const NUM = String.raw`(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?|cem|sem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil)`;
+const MONEY_AFTER = new RegExp(String.raw`(?:^|[^\p{L}\d])${NUM}\s*(?:mil\s*)?(?:reais|real|rs|conto|contos|pila|pilas|mangos?|pratas?)(?![\p{L}])`, "giu");
+const MONEY_BEFORE = new RegExp(String.raw`(?:R\$|até|ate|menos de|abaixo de|acima de|mais de|a partir de|entre|uns|umas|no máximo|no maximo|max|máx|teto de|orçamento de|orcamento de)\s*(?:de\s*)?${NUM}(?![\p{L}\d])`, "giu");
+
+function parseNumber(raw: string): number | null {
+  const word = NUMBER_WORDS[raw.toLowerCase()];
+  if (word) return word;
+  let t = raw;
+  if (/^\d{1,3}(?:\.\d{3})+/.test(t)) t = t.replace(/\./g, "");
+  t = t.replace(",", ".");
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+/**
+ * Valores que o cliente citou do jeito que se escreve no WhatsApp ("até 100 reais", "uns 50 conto",
+ * "até sem 100"), sem exigir "R$". Servem só para liberar a IA a repetir o valor que o cliente disse
+ * (ex.: "temos estes até R$ 100,00"), nunca como preço de produto.
+ */
+export function extractCustomerMoneyValues(text: string): number[] {
+  const out = new Set(extractMoneyValues(text));
+  for (const re of [MONEY_AFTER, MONEY_BEFORE]) {
+    for (const m of text.matchAll(re)) {
+      const n = parseNumber(m[1]!);
+      if (n === null) continue;
+      out.add(n);
+      // "dois mil reais", "5 mil"
+      if (/\bmil\b/i.test(m[0]) && n < 1000) out.add(n * 1000);
+    }
+  }
+  return [...out];
+}
+
 export function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace(/ /g, " ");
 }

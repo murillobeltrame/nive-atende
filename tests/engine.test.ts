@@ -40,6 +40,15 @@ describe("resposta automática", () => {
     expect(conv.handoffReason).toContain("valor não confirmado");
   });
 
+  it("pode repetir o valor que o cliente pediu, mesmo escrito sem R$", async () => {
+    const t = setup();
+    t.ai.script(reply("Até R$ 100,00 temos estas opções, quer ver as fotos?"));
+    await t.engine.handleInbound(inbound(PHONE, "que tens de whiskey até sem 100 reais ?"));
+    await t.clock.advance(2000);
+    expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
+    expect(t.wa.sent).toHaveLength(1);
+  });
+
   it("transferir_para_humano muda o estado, cria o evento e pausa a IA", async () => {
     const t = setup();
     t.ai.script(toolCall("transferir_para_humano", { motivo: "pedido de desconto" }), reply("Vou chamar alguém da loja, só um instante."));

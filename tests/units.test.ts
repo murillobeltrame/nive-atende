@@ -137,3 +137,17 @@ describe("nome do contato", () => {
     expect(st.setSavedName(jid, "").displayName).toBe("Nathy");
   });
 });
+
+describe("valores citados pelo cliente", () => {
+  it("reconhece valor escrito sem R$", async () => {
+    const { extractCustomerMoneyValues } = await import("../src/main/engine/guard");
+    expect(extractCustomerMoneyValues("que tens de whiskey até sem 100 reais ?")).toContain(100);
+    expect(extractCustomerMoneyValues("algo até 100")).toContain(100);
+    expect(extractCustomerMoneyValues("uns 50 conto")).toContain(50);
+    expect(extractCustomerMoneyValues("até cem reais")).toContain(100);
+    expect(extractCustomerMoneyValues("menos de 79,90")).toContain(79.9);
+    expect(extractCustomerMoneyValues("até 2 mil reais")).toContain(2000);
+    expect(extractCustomerMoneyValues("tamanho 40 cor preta")).toEqual([]);
+    expect(extractCustomerMoneyValues("tenho 2 filhos de 10 anos")).toEqual([]);
+  });
+});
