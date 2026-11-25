@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## v0.3.16 — 2026-11-25
+
+- **Botão "Responder com a IA":** aparece no topo da conversa quando a última mensagem é do cliente e ninguém respondeu. A IA lê de novo o que ficou sem resposta e responde na hora, mesmo que as mensagens tenham chegado com o programa fechado, fora do horário ou com a IA pausada.
+- **Localização da loja:** em Ajustes → Personalidade, cole o link do Google Maps (ou as coordenadas), confira o pino no mapa e salve. Quando o cliente perguntar onde fica, a IA responde com o endereço e manda o pino no WhatsApp. Na conversa, o botão de pino ao lado do anexo envia a localização na hora.
+- **Mapinha dentro do programa:** localização enviada ou recebida aparece como um mapa com o pino na própria conversa; clicando, abre no Google Maps.
+
 ## v0.3.15 — 2026-11-25
 
 - **A IA não larga mais o cliente depois de chamar a equipe:** quando um assunto precisa de alguém da loja, a conversa vai para "precisa de você", mas a IA continua no atendimento. Se o cliente voltar a falar, ela lê a mensagem: o que ela resolve (produto, preço, horário…) ela responde; se for o mesmo assunto, avisa que a equipe já está vendo, sem repetir a notificação; e se a nova mensagem resolver a pendência (o cliente explicou melhor, mudou de ideia), ela mesma tira a conversa das pendências. Quando alguém da equipe responde, a IA pausa como antes.
