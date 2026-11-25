@@ -13,10 +13,15 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
     name: "buscar_produto",
     description:
       "Busca no catálogo da loja. Devolve os produtos COM estoque (preço, marca, variações e quantidade) e, à parte, quantos estão esgotados. " +
-      "Use termos curtos e amplos (ex.: 'perfume', 'colônia', 'body splash', uma marca) e faça mais de uma busca quando o pedido for amplo, para conhecer as opções antes de recomendar.",
+      "Use termos curtos e amplos (ex.: 'perfume', 'colônia', 'body splash', uma marca) e faça mais de uma busca quando o pedido for amplo, para conhecer as opções antes de recomendar. " +
+      "Quando o cliente der uma faixa de preço, mande preco_max/preco_min: a busca já devolve só o que cabe, do mais barato ao mais caro.",
     parameters: {
       type: "object",
-      properties: { termo: { type: "string", description: "Palavra-chave do produto, ex.: 'perfume', 'tênis runner', 'bolsa couro'" } },
+      properties: {
+        termo: { type: "string", description: "Palavra-chave do produto, ex.: 'perfume', 'tênis runner', 'bolsa couro'" },
+        preco_max: { type: "number", description: "Opcional. Preço máximo em reais quando o cliente der um limite ('até 100 reais' → 100)." },
+        preco_min: { type: "number", description: "Opcional. Preço mínimo em reais ('acima de 50' → 50)." },
+      },
       required: ["termo"],
       additionalProperties: false,
     },
@@ -117,9 +122,34 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
       additionalProperties: false,
     },
   },
+  calcular_total: {
+    name: "calcular_total",
+    description:
+      "Calcula o total de uma compra com quantidades (ex.: 2 cervejas + 1 gelo). Use sempre que for dizer um total ou o valor de mais de uma unidade: nunca faça a conta de cabeça.",
+    parameters: {
+      type: "object",
+      properties: {
+        itens: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              produto_id: { type: "string", description: "produto_id devolvido por buscar_produto" },
+              quantidade: { type: "integer", minimum: 1 },
+            },
+            required: ["produto_id", "quantidade"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["itens"],
+      additionalProperties: false,
+    },
+  },
   transferir_para_humano: {
     name: "transferir_para_humano",
-    description: "Passa a conversa para uma pessoa da loja. Use para desconto, troca, reclamação, assuntos fora do escopo ou quando não souber responder.",
+    description:
+      "Passa a conversa para uma pessoa da loja. Use só para desconto, troca, devolução, reclamação, defeito, pedido de humano, assunto pessoal ou quando a informação pedida não está nestas instruções nem nas ferramentas. Pergunta simples de produto, preço, estoque, horário ou da loja você mesmo responde.",
     parameters: {
       type: "object",
       properties: { motivo: { type: "string", description: "Motivo curto, ex.: 'pedido de desconto'" } },
@@ -131,6 +161,7 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
 
 const ACTIVITY: Record<string, string> = {
   buscar_produto: "Buscando produtos no sistema…",
+  calcular_total: "Calculando o total…",
   ver_catalogo: "Conferindo o catálogo da loja…",
   aprender_apelido: "Anotando o apelido do produto…",
   mostrar_foto_produto: "Separando a foto do produto…",
@@ -144,7 +175,7 @@ const ACTIVITY: Record<string, string> = {
 };
 
 export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
-  const names = ["buscar_produto", "ver_catalogo"];
+  const names = ["buscar_produto", "ver_catalogo", "calcular_total"];
   if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto");
   if (settings.accounts.enabled) {
     names.push("consultar_contas");
@@ -239,6 +270,10 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
   switch (name) {
     case "buscar_produto": {
       const termo = str(args.termo).slice(0, 120);
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+      const precoMax = num(args.preco_max);
+      const precoMin = num(args.preco_min);
+      const priced = precoMax !== null || precoMin !== null;
       const found = new Map<string, NiveProduct>();
       const add = (list: Array<NiveProduct | null>) => {
         for (const p of list) if (p && p.active && !found.has(p.id)) found.set(p.id, p);
@@ -250,7 +285,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         add(await ctx.nive.searchProducts(a.termo, 5));
       }
       // 2) busca normal no ERP
-      add(await ctx.nive.searchProducts(termo, 20));
+      add(await ctx.nive.searchProducts(termo, priced ? 60 : 20));
       // 3) poucos resultados: busca tolerante a erro de digitação no índice do catálogo
       if (found.size < 3) {
         const extra = fuzzySearch(catalogIndex(ctx.store), termo, 5).filter((e) => !found.has(e.id));
@@ -266,9 +301,28 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         const total = variacoes.some((x) => x.disponivel === null) ? Infinity : variacoes.reduce((n, x) => n + (x.disponivel ?? 0), 0);
         return { p, variacoes, total };
       });
-      const inStock = view.filter((x) => x.total > 0);
+      const allInStock = view.filter((x) => x.total > 0);
+      const fits = (price: number) => (precoMax === null || price <= precoMax + 0.009) && (precoMin === null || price >= precoMin - 0.009);
+      const inStock = priced ? allInStock.filter((x) => fits(x.p.priceCash)).sort((a, b) => a.p.priceCash - b.p.priceCash) : allInStock;
       const soldOut = view.filter((x) => x.total <= 0);
-      state.actions.push({ label: `Buscou “${termo}” → ${inStock.length} com estoque${soldOut.length ? `, ${soldOut.length} esgotado(s)` : ""}`, kind: "info" });
+      const faixa = priced
+        ? `${precoMin !== null ? ` de ${formatBRL(precoMin)}` : ""}${precoMax !== null ? ` até ${formatBRL(precoMax)}` : ""}`
+        : "";
+      state.actions.push({ label: `Buscou “${termo}”${faixa} → ${inStock.length} com estoque${soldOut.length ? `, ${soldOut.length} esgotado(s)` : ""}`, kind: "info" });
+      if (priced) addMoney(state, ...[precoMax, precoMin].filter((v): v is number => v !== null));
+      if (priced && !inStock.length && allInStock.length) {
+        // nada na faixa: mostra os mais próximos para a IA oferecer com naturalidade
+        const nearest = [...allInStock].sort((a, b) => a.p.priceCash - b.p.priceCash).slice(0, 3);
+        for (const { p } of nearest) {
+          state.products.set(p.id, p);
+          addMoney(state, p.priceCash, p.priceCredit);
+        }
+        return {
+          resultado: "NADA_NA_FAIXA_DE_PRECO",
+          mais_baratos_com_estoque: nearest.map(({ p }) => ({ produto_id: p.id, nome: prettyName(p.description), preco: formatBRL(p.priceCash) })),
+          instrucao: "Diga com naturalidade que nessa faixa não tem agora e mostre as opções mais em conta que tem.",
+        };
+      }
       if (!products.length)
         return {
           resultado: "NENHUM_PRODUTO",
@@ -494,6 +548,31 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       ctx.addNote?.(nota);
       state.actions.push({ label: `Anotou: ${nota}`, kind: "info" });
       return { resultado: "ANOTADO", instrucao: "Continue a conversa normalmente, sem dizer que anotou." };
+    }
+
+    case "calcular_total": {
+      const itens = Array.isArray(args.itens) ? (args.itens as Array<Record<string, unknown>>).slice(0, 30) : [];
+      if (!itens.length) return { erro: "Informe os itens" };
+      const linhas: Array<{ produto: string; quantidade: number; unitario: string; subtotal: string }> = [];
+      let total = 0;
+      for (const it of itens) {
+        const id = str(it.produto_id);
+        const qty = Math.floor(Number(it.quantidade));
+        if (!Number.isFinite(qty) || qty < 1 || qty > 999) return { erro: `Quantidade inválida para ${id}` };
+        // preço sempre relido do ERP (ou da busca desta rodada), nunca vindo da IA
+        const p = state.products.get(id) ?? (await ctx.nive.getProduct(id).catch(() => null));
+        if (!p || !p.active) return { resultado: "PRODUTO_NAO_ENCONTRADO", produto_id: id, instrucao: "Busque o produto (buscar_produto) e use o produto_id devolvido." };
+        state.products.set(p.id, p);
+        const sub = Math.round(p.priceCash * qty * 100) / 100;
+        total += sub;
+        addMoney(state, p.priceCash, sub);
+        if (p.priceCredit > 0) addMoney(state, p.priceCredit, Math.round(p.priceCredit * qty * 100) / 100);
+        linhas.push({ produto: prettyName(p.description), quantidade: qty, unitario: formatBRL(p.priceCash), subtotal: formatBRL(sub) });
+      }
+      total = Math.round(total * 100) / 100;
+      addMoney(state, total);
+      state.actions.push({ label: `Calculou o total → ${formatBRL(total)}`, kind: "info" });
+      return { itens: linhas, total: formatBRL(total), instrucao: "Informe o total (e os subtotais se ajudar). Valores à vista." };
     }
 
     case "transferir_para_humano": {

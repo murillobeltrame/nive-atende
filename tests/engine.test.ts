@@ -29,9 +29,9 @@ describe("resposta automática", () => {
     expect(t.wa.sent).toHaveLength(1);
   });
 
-  it("não envia valor em R$ que não veio das ferramentas: passa para humano", async () => {
+  it("não envia valor em R$ que não veio das ferramentas: tenta de novo e, se insistir, passa para humano", async () => {
     const t = setup();
-    t.ai.script(reply("A bolsa sai por R$ 99,00!"));
+    t.ai.script(reply("A bolsa sai por R$ 99,00!"), reply("Sai por R$ 99,00 mesmo!"));
     await t.engine.handleInbound(inbound(PHONE, "quanto custa a bolsa?"));
     await t.clock.advance(2000);
     expect(t.wa.sent).toHaveLength(0);
@@ -47,6 +47,65 @@ describe("resposta automática", () => {
     await t.clock.advance(2000);
     expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
     expect(t.wa.sent).toHaveLength(1);
+  });
+
+  it("valor inventado na primeira tentativa: refaz com o motivo e envia a resposta corrigida", async () => {
+    const t = setup();
+    t.ai.script(
+      reply("A bolsa sai por R$ 99,00!"),
+      toolCall("buscar_produto", { termo: "bolsa" }),
+      reply("A bolsa caramelo está *R$ 159,90*. Quer que eu separe?"),
+    );
+    await t.engine.handleInbound(inbound(PHONE, "quanto custa a bolsa?"));
+    await t.clock.advance(2000);
+    expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
+    expect(t.wa.sent).toHaveLength(1);
+    expect(JSON.stringify(t.wa.sent[0])).toContain("159,90");
+    // a segunda tentativa recebeu o motivo
+    expect(JSON.stringify(t.ai.received[1])).toContain("não veio das ferramentas");
+  });
+
+  it("quantidade × preço do sistema não é tratado como valor inventado", async () => {
+    const t = setup();
+    t.ai.script(toolCall("buscar_produto", { termo: "bolsa" }), reply("Duas bolsas ficam R$ 319,80."));
+    await t.engine.handleInbound(inbound(PHONE, "quanto fica 2 bolsas?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
+  });
+
+  it("calcular_total usa o preço do sistema e libera o total na resposta", async () => {
+    const t = setup();
+    t.ai.script(
+      toolCall("calcular_total", { itens: [{ produto_id: "p-bolsa", quantidade: 1 }, { produto_id: "p-tenis", quantidade: 1 }] }),
+      (messages) => {
+        const out = JSON.parse(String(messages[messages.length - 1]!.content));
+        expect(out.total).toContain("449,80");
+        return { content: `Fica ${out.total} no total.`, toolCalls: [], inputTokens: 1, outputTokens: 1 };
+      },
+    );
+    await t.engine.handleInbound(inbound(PHONE, "bolsa e o tênis quanto fica?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    expect(JSON.stringify(t.wa.sent[0])).toContain("449,80");
+  });
+
+  it("nome de ferramenta escrito na resposta não chega ao cliente", async () => {
+    const t = setup();
+    t.ai.script(reply("Já chamo alguém da loja. transferir_para_humano"));
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    await t.clock.advance(2000);
+    expect(JSON.stringify(t.wa.sent[0])).not.toContain("transferir_para_humano");
+  });
+
+  it("sem resposta depois de muitas buscas: pede a resposta em vez de passar para humano", async () => {
+    const t = setup();
+    for (let i = 0; i < 6; i++) t.ai.script(toolCall("buscar_produto", { termo: `bolsa ${i}` }));
+    t.ai.script(reply("Tenho a bolsa caramelo por R$ 159,90!"));
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
   });
 
   it("transferir_para_humano muda o estado, cria o evento e pausa a IA", async () => {

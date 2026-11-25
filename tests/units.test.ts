@@ -151,3 +151,29 @@ describe("valores citados pelo cliente", () => {
     expect(extractCustomerMoneyValues("tenho 2 filhos de 10 anos")).toEqual([]);
   });
 });
+
+describe("busca com faixa de preço", () => {
+  it("devolve só o que cabe no limite, do mais barato ao mais caro", async () => {
+    const { runTool, newRunState } = await import("../src/main/ai/tools");
+    const { setup } = await import("./helpers");
+    const t = setup();
+    const ctx = {
+      conversationId: "x", phone: "5521977776666", settings: (await import("./helpers")).makeSettings({}), store: t.store, nive: t.nive,
+      identity: t.engine.identity, now: () => t.clock.now(), reserve: async () => { throw new Error("não"); },
+    } as unknown as Parameters<typeof runTool>[2];
+    const st = newRunState();
+    const out = (await runTool("buscar_produto", JSON.stringify({ termo: "bolsa tênis", preco_max: 200 }), ctx, st)) as { produtos: Array<{ nome: string }> };
+    expect(out.produtos.map((p) => p.nome)).toEqual(["Bolsa caramelo"]);
+    expect(st.money.has(200)).toBe(true);
+    const none = (await runTool("buscar_produto", JSON.stringify({ termo: "bolsa tênis", preco_max: 50 }), ctx, newRunState())) as { resultado: string };
+    expect(none.resultado).toBe("NADA_NA_FAIXA_DE_PRECO");
+  });
+});
+
+describe("horário no prompt", () => {
+  it("descreve dias seguidos como intervalo", async () => {
+    const { describeBusinessHours } = await import("../src/main/ai/prompt");
+    const s = { attendance: { businessHours: { enabled: true, days: [1, 2, 3, 4, 5, 6], start: "08:00", end: "22:00" } } } as never;
+    expect(describeBusinessHours(s)).toBe("segunda a sábado, das 08:00 às 22:00");
+  });
+});

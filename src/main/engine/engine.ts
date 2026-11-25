@@ -153,6 +153,13 @@ function hhmmToMinutes(v: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
+const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano)\b(\([^)]*\))?\)?\.?/g;
+
+/** Texto final da IA para o WhatsApp, sem nome de ferramenta que ela às vezes escreve na resposta. */
+export function cleanReply(text: string): string {
+  return toWhatsApp(text.replace(TOOL_NAMES_RE, "").replace(/[ \t]+\n/g, "\n"));
+}
+
 export function isWithinBusinessHours(s: AppSettings, ts: number): boolean {
   const bh = s.attendance.businessHours;
   if (!bh.enabled) return true;
@@ -623,6 +630,21 @@ export class Engine extends EventEmitter<EngineEvents> {
     let result: { reply: string | null; state: ToolRunState };
     try {
       result = await this.runAi(conv.id, false);
+      // Resposta com valor que não veio do sistema, ou sem resposta: tenta de novo uma vez, com o motivo,
+      // antes de passar para humano (a maioria era conta de cabeça ou valor repetido do cliente).
+      if (!run.abandoned && !result.state.sideEffect && !result.state.handoffReason) {
+        const bad = result.reply ? this.findUnconfirmedMoney(conv.id, result.reply, result.state) : [];
+        const empty = !result.reply && !result.state.photos.length;
+        if (bad.length || empty) {
+          const why = bad.length
+            ? `Sua resposta anterior citou ${bad.map(formatBRL).join(", ")}, valor que não veio das ferramentas. Refaça a resposta: para preço use buscar_produto, para total ou mais de uma unidade use calcular_total, e cite só valores devolvidos pelas ferramentas (ou não cite valor).`
+            : "Você não respondeu ao cliente. Responda agora a última mensagem dele, usando as ferramentas se precisar.";
+          this.log("info", `refazendo resposta da IA: ${bad.length ? `valor não confirmado (${bad.map(formatBRL).join(", ")})` : "resposta vazia"}`);
+          const retry = await this.runAi(conv.id, false, why);
+          for (const a of result.state.actions) retry.state.actions.unshift(a);
+          result = retry;
+        }
+      }
     } catch (e) {
       if (run.abandoned) return;
       if (isTransient(e)) return this.retryLater(conv.id, e, "ao gerar resposta");
@@ -957,6 +979,8 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private findUnconfirmedMoney(conversationId: string, reply: string, state: ToolRunState): number[] {
     const allowed = new Set(state.money);
+    // quantidade × preço que veio do sistema ("2 por R$ 19,80") também vale
+    for (const v of state.money) for (let k = 2; k <= 24; k++) allowed.add(Math.round(v * k * 100) / 100);
     for (const m of this.deps.store.listMessages(conversationId, 30)) {
       const text = m.text ?? m.transcript ?? "";
       // o cliente escreve valor de qualquer jeito ("até 100 reais"); a IA pode repetir o que ele disse
@@ -1068,11 +1092,14 @@ export class Engine extends EventEmitter<EngineEvents> {
     let reply: string | null = null;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const last = round === MAX_TOOL_ROUNDS - 1;
+      // última rodada: pede a resposta ao cliente em vez de mais buscas (senão a conversa ia para humano sem resposta)
+      if (last) messages.push({ role: "system", content: "Pare de usar ferramentas e responda ao cliente agora, com o que você já encontrou." });
       const res = await this.deps.ai.chat(activeModel(s), messages, tools);
       inTok += res.inputTokens;
       outTok += res.outputTokens;
-      if (!res.toolCalls.length) {
-        reply = res.content ? toWhatsApp(res.content) || null : null;
+      if (!res.toolCalls.length || last) {
+        reply = res.content ? cleanReply(res.content) || null : null;
         break;
       }
       messages.push({ role: "assistant", content: res.content, tool_calls: res.toolCalls, ...(res.raw !== undefined ? { raw: res.raw } : {}) });
