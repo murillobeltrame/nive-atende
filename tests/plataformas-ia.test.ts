@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AnthropicProvider, fromClaudeResponse, toClaudeRequest } from "../src/main/ai/anthropic";
 import type { AiMessage, AiProvider } from "../src/main/ai/openai";
-import { classifyAiError } from "../src/main/ai/openai";
+import { classifyAiError, OpenAiProvider } from "../src/main/ai/openai";
 import { AiRouter } from "../src/main/ai/router";
 import { DEFAULT_SETTINGS, deepMerge } from "../src/main/settings";
 import {
@@ -165,5 +165,43 @@ describe("roteador de plataformas", () => {
     expect((await r.chat("gpt-6-luna", [{ role: "user", content: "oi" }], [])).content).toBe("openai");
     expect(await r.test("gemini", true, "gemini-4-argon")).toEqual(["gemini"]);
     expect(providers.gemini.calls).toContain("chat:gemini-4-argon");
+  });
+});
+
+describe("OpenAI com ferramentas em modelo que exige raciocínio desligado", () => {
+  const tools = [{ name: "buscar_produto", description: "busca", parameters: { type: "object", properties: {}, additionalProperties: false } }];
+  const okBody = { id: "x", object: "chat.completion", created: 0, model: "gpt-6.1-terra", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "Tenho sim!" } }], usage: { prompt_tokens: 10, completion_tokens: 3 } };
+
+  it("tenta de novo com reasoning_effort none e lembra do modelo", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      bodies.push(body);
+      if (body.reasoning_effort !== "none") {
+        return new Response(
+          JSON.stringify({ error: { message: "Function tools with reasoning_effort are not supported for gpt-6.1-terra in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", type: "invalid_request_error" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const p = new OpenAiProvider(() => "sk-test", { fetchImpl: fetchMock as unknown as typeof fetch });
+    const r1 = await p.chat("gpt-6.1-terra", [{ role: "user", content: "oi" }], tools);
+    expect(r1.content).toBe("Tenho sim!");
+    expect(bodies.map((b) => b.reasoning_effort ?? null)).toEqual([null, "none"]);
+    await p.chat("gpt-6.1-terra", [{ role: "user", content: "oi" }], tools);
+    expect(bodies.length).toBe(3);
+    expect(bodies[2]!.reasoning_effort).toBe("none");
+  });
+
+  it("sem ferramentas não mexe no raciocínio", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const p = new OpenAiProvider(() => "sk-test", { fetchImpl: fetchMock as unknown as typeof fetch });
+    await p.chat("gpt-6.1-terra", [{ role: "user", content: "oi" }], []);
+    expect(bodies[0]!.reasoning_effort).toBeUndefined();
   });
 });

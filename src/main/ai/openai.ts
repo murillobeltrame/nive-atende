@@ -112,6 +112,17 @@ export interface OpenAiCompatibleOptions {
   /** Parâmetro de limite de resposta: a OpenAI usa max_completion_tokens; o Gemini, max_tokens. */
   limitParam: "max_completion_tokens" | "max_tokens";
   maxTokens: number;
+  /** Só para testes: troca o fetch usado pelo cliente. */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Modelos novos da OpenAI (ex.: gpt-6.1-terra) recusam ferramentas em /chat/completions com o raciocínio ligado:
+ * "Function tools with reasoning_effort are not supported … set reasoning_effort to 'none'".
+ */
+export function needsReasoningOff(e: unknown): boolean {
+  const msg = (e as { message?: string } | null)?.message ?? String(e);
+  return /reasoning_effort/i.test(msg) && /tools?/i.test(msg) && /none/i.test(msg);
 }
 
 const OPENAI_OPTIONS: OpenAiCompatibleOptions = {
@@ -138,18 +149,38 @@ export class OpenAiProvider implements AiProvider {
   protected client(): OpenAI {
     const key = this.apiKey();
     if (!key) throw new AiError(`Chave da ${this.opts.company} não configurada.`, "invalid_key");
-    return new OpenAI({ apiKey: key, timeout: 60_000, maxRetries: 1, ...(this.opts.baseURL ? { baseURL: this.opts.baseURL } : {}) });
+    return new OpenAI({
+      apiKey: key,
+      timeout: 60_000,
+      maxRetries: 1,
+      ...(this.opts.baseURL ? { baseURL: this.opts.baseURL } : {}),
+      ...(this.opts.fetchImpl ? { fetch: this.opts.fetchImpl } : {}),
+    });
   }
 
+  /** Modelos que só aceitam ferramentas com o raciocínio desligado (aprendido na primeira recusa). */
+  private readonly reasoningOff = new Set<string>();
+
   async chat(model: string, messages: AiMessage[], tools: AiToolDef[]): Promise<AiChatResult> {
-    try {
-      const res = await this.client().chat.completions.create({
+    const create = (reasoningOff: boolean) =>
+      this.client().chat.completions.create({
         model,
         // o campo raw é só nosso; a API não o conhece
         messages: messages.map((m) => (m.role === "assistant" ? { role: m.role, content: m.content, ...(m.tool_calls?.length ? { tool_calls: m.tool_calls } : {}) } : m)) as OpenAI.Chat.ChatCompletionMessageParam[],
         ...(tools.length ? { tools: tools.map((t) => ({ type: "function" as const, function: t })), tool_choice: "auto" as const } : {}),
+        ...(reasoningOff ? { reasoning_effort: "none" as unknown as OpenAI.ReasoningEffort } : {}),
         [this.opts.limitParam]: this.opts.maxTokens,
       });
+    try {
+      const off = tools.length > 0 && this.reasoningOff.has(model);
+      let res: Awaited<ReturnType<typeof create>>;
+      try {
+        res = await create(off);
+      } catch (e) {
+        if (off || !tools.length || !needsReasoningOff(e)) throw e;
+        this.reasoningOff.add(model);
+        res = await create(true);
+      }
       const choice = res.choices[0];
       const toolCalls = (choice?.message.tool_calls ?? [])
         .filter((tc) => tc.type === "function")
