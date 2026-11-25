@@ -108,19 +108,98 @@ describe("resposta automática", () => {
     expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
   });
 
-  it("transferir_para_humano muda o estado, cria o evento e pausa a IA", async () => {
+  it("transferir_para_humano marca a pendência, mas a IA segue atendendo e analisa a nova mensagem", async () => {
     const t = setup();
-    t.ai.script(toolCall("transferir_para_humano", { motivo: "pedido de desconto" }), reply("Vou chamar alguém da loja, só um instante."));
+    t.ai.script(toolCall("transferir_para_humano", { motivo: "pedido de desconto" }), reply("Vou ver isso com a equipe, só um instante."));
     await t.engine.handleInbound(inbound(PHONE, "faz um desconto?"));
+    await t.clock.advance(2000);
+    let conv = t.store.getConversation(JID)!;
+    expect(conv.state).toBe("precisa_humano");
+    expect(conv.handoffReason).toBe("pedido de desconto");
+    expect(conv.aiPausedUntil).toBeNull();
+    expect(t.store.listMessages(JID).some((m) => m.origin === "sistema" && m.eventType === "handoff")).toBe(true);
+    // nova mensagem: a IA responde, sabendo que a conversa está com a equipe
+    t.ai.script(reply("A equipe já está vendo o desconto e te responde já já."));
+    await t.engine.handleInbound(inbound(PHONE, "e aí?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(2);
+    expect(JSON.stringify(t.ai.received[t.ai.received.length - 1])).toContain("já foi encaminhada para a equipe");
+    expect(t.ai.toolsSeen[t.ai.toolsSeen.length - 1]).toContain("resolvido_sem_equipe");
+    conv = t.store.getConversation(JID)!;
+    expect(conv.state).toBe("precisa_humano");
+  });
+
+  it("mesmo motivo de novo não repete o aviso para a equipe", async () => {
+    const t = setup();
+    t.ai.script(toolCall("transferir_para_humano", { motivo: "pedido de desconto" }), reply("Vou ver com a equipe."));
+    await t.engine.handleInbound(inbound(PHONE, "faz desconto?"));
+    await t.clock.advance(2000);
+    t.ai.script(toolCall("transferir_para_humano", { motivo: "pedido de desconto" }), reply("Já estão vendo, só um instante."));
+    await t.engine.handleInbound(inbound(PHONE, "faz ou não?"));
+    await t.clock.advance(2000);
+    expect(t.store.listMessages(JID).filter((m) => m.eventType === "handoff")).toHaveLength(1);
+  });
+
+  it("a IA resolve sozinha a pendência quando a nova mensagem permite", async () => {
+    const t = setup();
+    t.ai.script(toolCall("transferir_para_humano", { motivo: "não entendi o pedido" }), reply("Vou chamar a equipe."));
+    await t.engine.handleInbound(inbound(PHONE, "aquele lá"));
+    await t.clock.advance(2000);
+    t.ai.script(
+      toolCall("buscar_produto", { termo: "bolsa" }),
+      toolCall("resolvido_sem_equipe", { resumo: "cliente queria a bolsa caramelo" }),
+      reply("Ah, a bolsa caramelo! Está R$ 159,90. Quer que eu separe?"),
+    );
+    await t.engine.handleInbound(inbound(PHONE, "a bolsa caramelo"));
+    await t.clock.advance(2000);
+    const conv = t.store.getConversation(JID)!;
+    expect(conv.state).toBe("ia");
+    expect(conv.handoffReason).toBeNull();
+    expect(t.store.listMessages(JID).some((m) => m.eventType === "handoff_resolved")).toBe(true);
+  });
+
+  it("limite diário de respostas ainda pausa a IA de verdade", async () => {
+    const t = setup({ settings: { ai: { maxAiRepliesPerConversationPerDay: 1 } } });
+    await t.engine.handleInbound(inbound(PHONE, "oi"));
+    await t.clock.advance(2000);
+    await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
     await t.clock.advance(2000);
     const conv = t.store.getConversation(JID)!;
     expect(conv.state).toBe("precisa_humano");
-    expect(conv.handoffReason).toBe("pedido de desconto");
-    expect(t.store.listMessages(JID).some((m) => m.origin === "sistema" && m.eventType === "handoff")).toBe(true);
-    // nova mensagem durante a pausa: a IA não responde
-    await t.engine.handleInbound(inbound(PHONE, "e aí?"));
+    expect(conv.aiPausedUntil).not.toBeNull();
+    await t.engine.handleInbound(inbound(PHONE, "alô?"));
     await t.clock.advance(2000);
     expect(t.wa.sent).toHaveLength(1);
+  });
+
+  it("formas de pagamento vêm do sistema, sem o crediário", async () => {
+    const t = setup();
+    t.ai.script(toolCall("ver_formas_pagamento", {}), (messages) => {
+      const out = JSON.parse(String(messages[messages.length - 1]!.content));
+      expect(out.formas).toEqual(["Pix", "Cartão de crédito"]);
+      expect(out.crediario).toContain("equipe");
+      return { content: "Aceitamos Pix e cartão de crédito!", toolCalls: [], inputTokens: 1, outputTokens: 1 };
+    });
+    await t.engine.handleInbound(inbound(PHONE, "aceita pix?"));
+    await t.clock.advance(2000);
+    expect(t.wa.sent).toHaveLength(1);
+    expect(t.store.getConversation(JID)!.state).toBe("ia");
+  });
+
+  it("pedido de crediário sempre vai para a equipe, mesmo se a IA não transferir", async () => {
+    const t = setup();
+    t.ai.script(reply("Vou ver isso pra você."));
+    await t.engine.handleInbound(inbound(PHONE, "posso pagar no crediário?"));
+    await t.clock.advance(2000);
+    const conv = t.store.getConversation(JID)!;
+    expect(conv.state).toBe("precisa_humano");
+    expect(conv.handoffReason).toBe("cliente quer crediário");
+  });
+
+  it("transferência por crediário não é recusada como pergunta simples", async () => {
+    const { isAnswerableHandoff } = await import("../src/main/ai/tools");
+    expect(isAnswerableHandoff("cliente quer crediário")).toBe(false);
+    expect(isAnswerableHandoff("formas de pagamento")).toBe(true);
   });
 
   it("atendimento automático desligado: não responde", async () => {

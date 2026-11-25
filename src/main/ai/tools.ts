@@ -161,6 +161,36 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
       additionalProperties: false,
     },
   },
+  resolvido_sem_equipe: {
+    name: "resolvido_sem_equipe",
+    description:
+      "Use só quando a conversa estava encaminhada para a equipe e você mesmo resolveu esse assunto com a nova mensagem do cliente (ele explicou melhor, mudou de ideia, era dúvida que você responde). Tira a conversa das pendências da equipe.",
+    parameters: {
+      type: "object",
+      properties: { resumo: { type: "string", description: "Como foi resolvido, curto, ex.: 'cliente só queria saber o preço'" } },
+      required: ["resumo"],
+      additionalProperties: false,
+    },
+  },
+  cancelar_reserva: {
+    name: "cancelar_reserva",
+    description:
+      "Cancela uma reserva deste cliente quando ele desistir da compra ('não quero mais', 'pode cancelar', 'desisti'). Se a loja já tinha aprovado, o rascunho é cancelado no sistema e o produto volta ao estoque. " +
+      "Sem produto_id, mostra as reservas ativas desta conversa. Use só quando a desistência estiver clara; se tiver dúvida, pergunte antes.",
+    parameters: {
+      type: "object",
+      properties: {
+        reserva_id: { type: "string", description: "reserva_id devolvido por esta ferramenta. Vazio para listar as reservas ativas." },
+      },
+      required: ["reserva_id"],
+      additionalProperties: false,
+    },
+  },
+  ver_formas_pagamento: {
+    name: "ver_formas_pagamento",
+    description: "Lista as formas de pagamento aceitas pela loja, direto do sistema. Use sempre que o cliente perguntar como pode pagar (pix, cartão, dinheiro…).",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
   transferir_para_humano: {
     name: "transferir_para_humano",
     description:
@@ -186,19 +216,24 @@ const ACTIVITY: Record<string, string> = {
   confirmar_data_nascimento: "Conferindo o cadastro do cliente…",
   consultar_contas: "Consultando as contas do cliente…",
   transferir_para_humano: "Chamando alguém da loja…",
+  resolvido_sem_equipe: "Resolvendo a pendência…",
+  ver_formas_pagamento: "Conferindo as formas de pagamento…",
+  cancelar_reserva: "Cancelando a reserva…",
   anotar_preferencia: "Anotando a preferência do cliente…",
   avisar_quando_chegar: "Registrando o aviso de chegada…",
 };
 
-export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
+export function toolsFor(settings: AppSettings, readOnly = false, triage = false): AiToolDef[] {
   const names = ["buscar_produto", "ver_promocoes", "ver_catalogo", "calcular_total"];
-  if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto");
+  if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto", "cancelar_reserva");
   if (settings.accounts.enabled) {
     names.push("consultar_contas");
     if (!readOnly) names.push("identificar_cliente", "confirmar_data_nascimento");
   }
   if (!readOnly && settings.attendance.backInStock !== false) names.push("avisar_quando_chegar");
+  names.push("ver_formas_pagamento");
   if (!readOnly) names.push("anotar_preferencia", "aprender_apelido", "transferir_para_humano");
+  if (!readOnly && triage) names.push("resolvido_sem_equipe");
   return names.map((n) => TOOL_DEFS[n]!);
 }
 
@@ -220,6 +255,10 @@ export interface ToolContext {
   addNote?: (note: string) => void;
   /** Avisa a interface o que a IA está fazendo agora ("Buscando produtos…"). */
   activity?: (label: string) => void;
+  /** Reservas ainda ativas desta conversa (aguardando aprovação, separadas ou com falha). */
+  activeReservations?: () => Reservation[];
+  /** Cancela a reserva porque o cliente desistiu (rascunho aprovado é cancelado no ERP e o estoque volta). */
+  cancelReservation?: (id: string) => Promise<Reservation>;
   /** Cria a reserva (rascunho no ERP ou pendente de aprovação). */
   reserve: (input: {
     product: NiveProduct;
@@ -249,6 +288,8 @@ export interface ToolRunState {
   searched: boolean;
   /** Já recusou uma passagem para humano por pergunta que a IA mesma responde. */
   handoffRefused: boolean;
+  /** A IA resolveu sozinha o assunto que estava com a equipe (resumo). */
+  triageResolved?: string | null;
 }
 
 export function newRunState(): ToolRunState {
@@ -322,8 +363,8 @@ function promoView(p: NivePromotion, state: ToolRunState, onlyIds?: Set<string>)
 export function isAnswerableHandoff(motivo: string): boolean {
   const t = motivo.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   // esses continuam indo para a equipe
-  if (/(desconto|negoci|troca|devolu|reclama|defeito|estrag|humano|pessoa|atendente|gerente|dono|robo|cancel|pagamento pendente|pix errado|cobranca|divida|conta|parcela|falha ao reservar|reserva recusada|pessoal|ofens|xing)/.test(t)) return false;
-  return /(promo|oferta|preco|valor|quanto|produto|estoque|disponib|bebida|cardapio|catalogo|tem |marca|sabor|tamanho|combo|kit|opcao|opcoes|vodka|cerveja|refri|energetico|whisk|gin|vinho|cigarro|perfume)/.test(t);
+  if (/(credi|fiado|carne|caderneta|desconto|negoci|troca|devolu|reclama|defeito|estrag|humano|pessoa|atendente|gerente|dono|robo|cancel|pagamento pendente|pix errado|cobranca|divida|conta|parcela|falha ao reservar|reserva recusada|pessoal|ofens|xing)/.test(t)) return false;
+  return /(forma de pagamento|formas de pagamento|aceita|pix|cartao|dinheiro|horario|promo|oferta|preco|valor|quanto|produto|estoque|disponib|bebida|cardapio|catalogo|tem |marca|sabor|tamanho|combo|kit|opcao|opcoes|vodka|cerveja|refri|energetico|whisk|gin|vinho|cigarro|perfume)/.test(t);
 }
 
 function addMoney(state: ToolRunState, ...values: number[]): void {
@@ -730,6 +771,68 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       return { itens: linhas, total: formatBRL(total), instrucao: "Informe o total (e os subtotais se ajudar). Valores à vista." };
     }
 
+    case "resolvido_sem_equipe": {
+      const resumo = guardText(str(args.resumo)).safeText.replace(/\s+/g, " ").trim().slice(0, 120) || "assunto resolvido";
+      state.triageResolved = resumo;
+      return { resultado: "PENDENCIA_ENCERRADA", instrucao: "Continue a conversa normalmente, sem comentar isso com o cliente." };
+    }
+
+    case "cancelar_reserva": {
+      const ativas = ctx.activeReservations?.() ?? [];
+      const listar = () =>
+        ativas.map((r) => ({
+          reserva_id: r.id,
+          produto: `${prettyName(r.productDescription)}${r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : ""}`,
+          quantidade: r.quantity,
+          situacao: r.status === "pending_approval" ? "aguardando a loja aprovar" : "separada",
+        }));
+      if (!ativas.length) return { resultado: "SEM_RESERVAS_ATIVAS", instrucao: "Diga que não há nada separado no nome dele agora." };
+      const id = str(args.reserva_id).trim();
+      const alvo = id ? ativas.find((r) => r.id === id) : ativas.length === 1 ? ativas[0] : undefined;
+      if (!alvo) {
+        return {
+          resultado: "ESCOLHA_A_RESERVA",
+          reservas: listar(),
+          instrucao: id ? "Esse reserva_id não é desta conversa. Use um da lista." : "Há mais de uma reserva: pergunte qual ele quer cancelar (ou se são todas) e chame de novo com o reserva_id.",
+        };
+      }
+      if (!ctx.cancelReservation) return { erro: "Cancelamento indisponível" };
+      try {
+        const r = await ctx.cancelReservation(alvo.id);
+        state.sideEffect = true;
+        state.actions.push({ label: `Cliente desistiu: reserva de ${r.quantity}× ${prettyName(r.productDescription)} cancelada`, kind: "info" });
+        return { resultado: "RESERVA_CANCELADA", instrucao: "Confirme ao cliente com naturalidade que cancelou e deixe a porta aberta, sem insistir." };
+      } catch (e) {
+        state.actions.push({ label: `Falha ao cancelar a reserva de ${prettyName(alvo.productDescription)}`, kind: "error" });
+        const finalizada = /finalizada/i.test((e as Error).message);
+        return {
+          resultado: finalizada ? "VENDA_JA_FINALIZADA" : "FALHA_AO_CANCELAR",
+          instrucao: "Diga que a equipe vai ver o cancelamento com ele e use transferir_para_humano com o motivo 'cliente desistiu, cancelar " + (finalizada ? "venda já finalizada" : "reserva") + "'.",
+        };
+      }
+    }
+
+    case "ver_formas_pagamento": {
+      const methods = ctx.nive.listPaymentMethods ? await ctx.nive.listPaymentMethods() : null;
+      if (methods === null) {
+        state.actions.push({ label: "Formas de pagamento: sem acesso no sistema", kind: "error" });
+        return { resultado: "INDISPONIVEL", instrucao: "Se o texto 'SOBRE A LOJA' disser as formas de pagamento, use-o. Senão, diga que vai confirmar e use transferir_para_humano." };
+      }
+      const normais = methods.filter((m) => !m.storeCredit);
+      const temCrediario = methods.some((m) => m.storeCredit);
+      state.actions.push({ label: `Formas de pagamento → ${normais.map((m) => m.name).join(", ") || "nenhuma"}`, kind: "info" });
+      return {
+        formas: normais.map((m) => m.name),
+        ...(temCrediario
+          ? {
+              crediario:
+                "A loja tem crediário, mas quem decide é sempre a equipe. Não ofereça por conta própria e nunca aprove, negue ou explique condições. Se o cliente pedir crediário, fiado ou marcar na conta, diga que a equipe vê com ele e use transferir_para_humano com o motivo 'cliente quer crediário'.",
+            }
+          : {}),
+        instrucao: "Informe as formas de pagamento com naturalidade, numa frase. Não fale de taxas, juros ou parcelas.",
+      };
+    }
+
     case "transferir_para_humano": {
       const motivo = str(args.motivo).slice(0, 120) || "pedido do cliente";
       // pergunta de produto/preço/promoção é trabalho da IA: recusa uma vez e manda consultar
@@ -739,7 +842,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         return {
           resultado: "NAO_TRANSFERIDO",
           instrucao:
-            "Isso é pergunta de produto, preço ou promoção: você mesmo responde. Use ver_promocoes (promoções/ofertas) e buscar_produto (produtos e preços), " +
+            "Isso é pergunta de produto, preço, promoção ou pagamento: você mesmo responde. Use ver_formas_pagamento (como pagar), ver_promocoes (promoções/ofertas) e buscar_produto (produtos e preços), " +
             "varrendo com termos amplos e sinônimos, e responda ao cliente com o que achou. Se não houver promoção, diga que agora não tem e mostre as opções com o preço normal. " +
             "Não diga que vai chamar alguém.",
         };

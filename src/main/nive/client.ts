@@ -104,6 +104,8 @@ export interface NiveApi {
   createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }): Promise<NiveDraftSale>;
   /** Promoções valendo agora; null quando o ERP ainda não tem a consulta. */
   listActivePromotions?(term?: string): Promise<NivePromotion[] | null>;
+  /** Formas de pagamento ativas nas vendas; null quando o ERP não tem a consulta ou a chave não tem acesso. */
+  listPaymentMethods?(): Promise<NivePaymentMethod[] | null>;
   /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
   findCustomersByName(name: string): Promise<NiveCustomer[]>;
   /** Clientes cujo nome contém todas as palavras informadas (ex.: "Aliny" → "Aliny Rocker Beltrame"). */
@@ -394,6 +396,29 @@ export class NiveClient implements NiveApi {
     }));
   }
 
+  /** Formas de pagamento ativas nas vendas. null = ERP sem a rota ou chave sem acesso. */
+  async listPaymentMethods(): Promise<NivePaymentMethod[] | null> {
+    let raw: unknown = null;
+    // /sales/payment-methods vale com a permissão de vendas da chave; a rota completa precisa de permissão de configuração
+    for (const path of ["/sales/payment-methods", "/payment-methods?active=true"]) {
+      try {
+        raw = await this.request<unknown>("GET", path);
+        break;
+      } catch (e) {
+        if (e instanceof NiveApiError && [400, 403, 404].includes(e.status)) continue;
+        throw e;
+      }
+    }
+    if (raw === null) return null;
+    const items = (Array.isArray(raw) ? raw : Array.isArray((raw as Json)?.items) ? ((raw as Json).items as unknown[]) : []) as Json[];
+    return items
+      .filter((m) => m.active !== false && m.availableInSales !== false && String(m.name ?? "").trim())
+      .map((m) => {
+        const name = String(m.name).trim();
+        return { id: String(m.id ?? ""), name, storeCredit: isStoreCredit(name, s(m.fiscalCode)) };
+      });
+  }
+
   async findCustomersByName(name: string): Promise<NiveCustomer[]> {
     const target = normalizeName(name);
     if (target.length < 3) return [];
@@ -468,4 +493,17 @@ export class NiveClient implements NiveApi {
     }
     return { id, orderNumber: sale.orderNumber == null ? null : n(sale.orderNumber) };
   }
+}
+
+export interface NivePaymentMethod {
+  id: string;
+  name: string;
+  /** Crediário / crédito da loja: a decisão é sempre da equipe. */
+  storeCredit: boolean;
+}
+
+/** Crediário da loja: código fiscal 05 (crédito loja) ou nome que indique venda na conta da loja. */
+export function isStoreCredit(name: string, fiscalCode: string | null): boolean {
+  if (fiscalCode === "05") return true;
+  return /credi[aá]rio|fiado|carn[eê]|cr[eé]dito\s+(na|da)?\s*loja|caderneta|nota\s+promiss|conta\s+(do|de)\s+cliente/i.test(name);
 }

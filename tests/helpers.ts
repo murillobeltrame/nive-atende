@@ -3,7 +3,7 @@ import { Store } from "../src/main/store/db";
 import { DEFAULT_SETTINGS } from "../src/main/settings";
 import type { AppSettings, DeepPartial } from "../src/shared/types";
 import { deepMerge } from "../src/main/settings";
-import type { NiveApi, NiveCustomer, NiveProduct, NiveStatement, NivePromotion } from "../src/main/nive/client";
+import type { NiveApi, NiveCustomer, NiveProduct, NiveStatement, NivePaymentMethod, NivePromotion } from "../src/main/nive/client";
 import type { AiChatResult, AiMessage, AiProvider, AiToolDef } from "../src/main/ai/openai";
 import type { SendResult, WhatsAppGateway } from "../src/main/evolution/client";
 import type { InboundMessage } from "../src/main/evolution/parse";
@@ -91,6 +91,15 @@ export class FakeNive implements NiveApi {
   }
   async getProduct(id: string): Promise<NiveProduct | null> {
     return PRODUCTS.find((p) => p.id === id) ?? null;
+  }
+  /** Formas de pagamento ativas (null = ERP sem a consulta). */
+  paymentMethods: NivePaymentMethod[] | null = [
+    { id: "pm-pix", name: "Pix", storeCredit: false },
+    { id: "pm-cartao", name: "Cartão de crédito", storeCredit: false },
+    { id: "pm-cred", name: "Crediário", storeCredit: true },
+  ];
+  async listPaymentMethods(): Promise<NivePaymentMethod[] | null> {
+    return this.paymentMethods;
   }
   /** Promoções valendo (null = ERP sem a consulta). */
   promotions: NivePromotion[] | null = [];

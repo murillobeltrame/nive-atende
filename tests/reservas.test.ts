@@ -191,6 +191,53 @@ describe("cancelar reserva pelo app", () => {
   });
 });
 
+describe("cliente desiste da reserva", () => {
+  const cancel = (id = "") => toolCall("cancelar_reserva", { reserva_id: id });
+
+  it("reserva já aprovada: cancela o rascunho no ERP e o estoque volta", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const r = await ask(t, "Pedro Alves");
+    expect(r.status).toBe("created");
+    t.ai.script(cancel(), reply("Tudo bem, cancelei por aqui. Se mudar de ideia é só chamar!"));
+    await t.engine.handleInbound(inbound(PHONE, "desisti, não quero mais"));
+    await t.clock.advance(2000);
+    expect(t.store.getReservation(r.id)!.status).toBe("cancelled");
+    expect(t.nive.cancelled).toEqual([r.saleId]);
+    const evt = t.store.listMessages(JID).find((m) => m.text?.includes("Cliente desistiu da reserva"))!;
+    expect(evt.text).toContain("estoque voltou");
+  });
+
+  it("reserva aguardando aprovação: sai das pendências sem mexer no ERP", async () => {
+    const t = setup();
+    const r = await ask(t, "Pedro Alves");
+    expect(r.status).toBe("pending_approval");
+    t.ai.script(cancel(), reply("Cancelado, sem problema!"));
+    await t.engine.handleInbound(inbound(PHONE, "pode cancelar"));
+    await t.clock.advance(2000);
+    expect(t.store.getReservation(r.id)!.status).toBe("cancelled");
+    expect(t.nive.cancelled).toEqual([]);
+  });
+
+  it("venda já finalizada: passa para a equipe", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const r = await ask(t, "Pedro Alves");
+    t.nive.saleStatus[r.saleId!] = "COMPLETED";
+    t.ai.script(cancel(), toolCall("transferir_para_humano", { motivo: "cliente desistiu, cancelar venda já finalizada" }), reply("A equipe já vê isso com você."));
+    await t.engine.handleInbound(inbound(PHONE, "não quero mais"));
+    await t.clock.advance(2000);
+    expect(t.store.getConversation(JID)!.state).toBe("precisa_humano");
+  });
+
+  it("só cancela reservas desta conversa", async () => {
+    const t = setup({ settings: { reservation: { autoEnabled: true } } });
+    const r = await ask(t, "Pedro Alves");
+    t.ai.script(toolCall("cancelar_reserva", { reserva_id: "outra" }), reply("Qual delas?"));
+    await t.engine.handleInbound(inbound(PHONE, "cancela"));
+    await t.clock.advance(2000);
+    expect(t.store.getReservation(r.id)!.status).toBe("created");
+  });
+});
+
 describe("prazo da reserva na mensagem", () => {
   it("informa até quando fica reservado quando ligado", async () => {
     const t = setup();

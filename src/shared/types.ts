@@ -47,6 +47,7 @@ export interface ChatMessage {
 
 export type SystemEventType =
   | "handoff" // IA passou para humano
+  | "handoff_resolved" // a IA resolveu sozinha o que tinha encaminhado
   | "takeover" // humano assumiu
   | "returned_to_ai" // devolvido para a IA
   | "identified" // cliente identificado

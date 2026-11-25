@@ -24,6 +24,7 @@ function readOnlyNive(real: NiveApi): NiveApi {
     },
     searchProducts: (t, l) => real.searchProducts(t, l),
     getProduct: (id) => real.getProduct(id),
+    ...(real.listPaymentMethods ? { listPaymentMethods: () => real.listPaymentMethods!() } : {}),
     createDraftSale: async () => ({ id: `simulado-${++seq}`, orderNumber: null }),
     findCustomersByName: async () => [],
     findSimilarCustomers: async () => [],

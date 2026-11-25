@@ -99,6 +99,21 @@ export interface EngineEvents {
 }
 
 const MAX_TOOL_ROUNDS = 7;
+/** Cliente pedindo crediário / fiado / marcar na conta: a equipe sempre decide. */
+const STORE_CREDIT_RE = /credi[aá]rio|\bfiado\b|\bcarn[eê]\b|caderneta|marca(r)?\s+(na|no)\s+(minha\s+|meu\s+)?(conta|ficha|nome|caderno)|\bpendura(r)?\b/i;
+/** Pendência de triagem sem ninguém da equipe mexer por mais que isso: o cliente voltou com outro assunto. */
+const TRIAGE_STALE_MS = 12 * 60 * 60 * 1000;
+
+/** Orientação da IA numa conversa já encaminhada para a equipe. */
+export function triageInstruction(reason: string): string {
+  return [
+    `Esta conversa já foi encaminhada para a equipe da loja (motivo: ${reason}) e ninguém da equipe respondeu ainda. Você continua no atendimento enquanto isso. Analise a nova mensagem do cliente:`,
+    "- Se for algo que você resolve (produto, preço, estoque, total, reserva, horário, informação da loja), responda normalmente.",
+    "- Se com a nova mensagem você conseguir resolver o próprio assunto encaminhado (o cliente explicou melhor, mudou de ideia, era uma dúvida que você responde), resolva e use resolvido_sem_equipe.",
+    "- Se for o mesmo assunto que precisa da equipe (cliente insistindo, perguntando se já viram), responda numa frase curta e variada que a equipe já está vendo e responde em breve. Não chame transferir_para_humano de novo para o mesmo assunto.",
+    "- Se for um assunto novo que também precisa da equipe, use transferir_para_humano com o novo motivo.",
+  ].join("\n");
+}
 /** Teto de espera enquanto o contato continua digitando. */
 const MAX_TYPING_WAIT_MS = 90_000;
 /** Limite de texto do histórico enviado à IA (mantém o custo previsível). */
@@ -153,7 +168,7 @@ function hhmmToMinutes(v: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano)\b(\([^)]*\))?\)?\.?/g;
+const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano|resolvido_sem_equipe|ver_formas_pagamento|cancelar_reserva)\b(\([^)]*\))?\)?\.?/g;
 
 /** Texto final da IA para o WhatsApp, sem nome de ferramenta que ela às vezes escreve na resposta. */
 export function cleanReply(text: string): string {
@@ -507,9 +522,16 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (conv.state === "ignorado") return store.markProcessed(ids);
     if (!s.attendance.autoEnabled) return store.markProcessed(ids);
     if (conv.aiPausedUntil && conv.aiPausedUntil > this.now()) return store.markProcessed(ids);
-    if (conv.state === "humano" || conv.state === "precisa_humano") {
+    // Encaminhada para a equipe (triagem): a IA continua atendendo e analisa a nova mensagem, mas a pendência
+    // segue marcada até alguém da equipe responder, marcar como resolvida ou a própria IA resolver.
+    // Pendência muito antiga sem ninguém mexer: o cliente voltou com outro assunto, recomeça do zero.
+    const handoffAt = store.getKv<number>(`handoffAt:${conv.id}`) ?? 0;
+    const triageStale = conv.state === "precisa_humano" && this.now() - handoffAt > TRIAGE_STALE_MS;
+    if (conv.state === "humano" || triageStale) {
       conv = store.updateConversation(conv.id, { state: "ia", aiPausedUntil: null, handoffReason: null });
       this.emit("conversation", conv);
+    } else if (conv.state === "precisa_humano" && conv.aiPausedUntil) {
+      conv = store.updateConversation(conv.id, { aiPausedUntil: null });
     }
     // Atendimento parado (WhatsApp caiu, IA sem crédito...): as mensagens ficam aguardando.
     if (this.deps.blockedReason()) return;
@@ -537,7 +559,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     const aiToday = store.listMessages(conv.id, 200).filter((m) => m.origin === "ia" && localDay(m.createdAt) === today).length;
     if (aiToday >= s.ai.maxAiRepliesPerConversationPerDay) {
       store.markProcessed(ids);
-      return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa");
+      return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa", false, { pause: true });
     }
 
     // conversa pessoal do dono com esse contato? então não interfere
@@ -627,9 +649,12 @@ export class Engine extends EventEmitter<EngineEvents> {
       this.identity.rememberSensitive(conv.id, g.cpfs, g.dates);
     }
 
+    // conversa já encaminhada para a equipe: a IA segue atendendo, sabendo do motivo
+    const triage = conv.state === "precisa_humano" ? (conv.handoffReason ?? "assunto que precisa da equipe") : null;
+
     let result: { reply: string | null; state: ToolRunState };
     try {
-      result = await this.runAi(conv.id, false);
+      result = await this.runAi(conv.id, false, undefined, triage);
       // Resposta com valor que não veio do sistema, ou sem resposta: tenta de novo uma vez, com o motivo,
       // antes de passar para humano (a maioria era conta de cabeça ou valor repetido do cliente).
       if (!run.abandoned && !result.state.sideEffect && !result.state.handoffReason) {
@@ -640,7 +665,7 @@ export class Engine extends EventEmitter<EngineEvents> {
             ? `Sua resposta anterior citou ${bad.map(formatBRL).join(", ")}, valor que não veio das ferramentas. Refaça a resposta: para preço use buscar_produto, para total ou mais de uma unidade use calcular_total, e cite só valores devolvidos pelas ferramentas (ou não cite valor).`
             : "Você não respondeu ao cliente. Responda agora a última mensagem dele, usando as ferramentas se precisar.";
           this.log("info", `refazendo resposta da IA: ${bad.length ? `valor não confirmado (${bad.map(formatBRL).join(", ")})` : "resposta vazia"}`);
-          const retry = await this.runAi(conv.id, false, why);
+          const retry = await this.runAi(conv.id, false, why, triage);
           for (const a of result.state.actions) retry.state.actions.unshift(a);
           result = retry;
         }
@@ -696,6 +721,10 @@ export class Engine extends EventEmitter<EngineEvents> {
       for (const photo of photos) await this.sendAiMedia(conv.id, photo.url, photo.caption, null);
       if (reply) await this.sendAiText(conv.id, reply, { countsAsAiReply: true });
     }
+    // crediário é sempre decisão da equipe, mesmo que a IA não tenha chamado a transferência
+    const askedStoreCredit = fresh.some((m) => STORE_CREDIT_RE.test(store.getMessage(m.id)?.transcript ?? m.text ?? ""));
+    if (askedStoreCredit && !state.handoffReason) state.handoffReason = "cliente quer crediário";
+    if (state.triageResolved && triage && !state.handoffReason) this.resolveTriage(conv.id, state.triageResolved);
     if (state.handoffReason) return this.handoff(conv.id, state.handoffReason, false);
     if (!reply && !state.photos.length) return this.handoff(conv.id, "a IA não soube responder");
   }
@@ -1066,7 +1095,12 @@ export class Engine extends EventEmitter<EngineEvents> {
     return out;
   }
 
-  private async runAi(conversationId: string, readOnly: boolean, extraInstruction?: string): Promise<{ reply: string | null; state: ToolRunState }> {
+  private async runAi(
+    conversationId: string,
+    readOnly: boolean,
+    extraInstruction?: string,
+    triage: string | null = null,
+  ): Promise<{ reply: string | null; state: ToolRunState }> {
     const store = this.deps.store;
     const s = this.s;
     const conv = store.getConversation(conversationId)!;
@@ -1084,8 +1118,9 @@ export class Engine extends EventEmitter<EngineEvents> {
       nicknames: listNicknames(store),
     });
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
+    if (triage) messages.push({ role: "system", content: triageInstruction(triage) });
     if (extraInstruction) messages.push({ role: "system", content: extraInstruction });
-    const tools = toolsFor(s, readOnly);
+    const tools = toolsFor(s, readOnly, Boolean(triage));
     const state = newRunState();
     let inTok = 0;
     let outTok = 0;
@@ -1121,6 +1156,11 @@ export class Engine extends EventEmitter<EngineEvents> {
             addWaitlist: (productId, description) => !readOnly && this.addWaitlist(conversationId, productId, description),
             activity: (label) => !readOnly && this.setActivity(conversationId, label),
             reserve: (input) => this.createReservation(conversationId, input),
+            activeReservations: () =>
+              store
+                .listReservations(300)
+                .filter((r) => r.conversationId === conversationId && ["pending_approval", "created", "failed"].includes(r.status)),
+            cancelReservation: (id) => this.cancelReservation(id, "cliente"),
           }, state);
         } catch (e) {
           console.error(`[ferramenta ${call.function.name}]`, (e as Error).message);
@@ -1370,15 +1410,30 @@ export class Engine extends EventEmitter<EngineEvents> {
     return msg;
   }
 
-  handoff(conversationId: string, reason: string, notifyCustomer = false): void {
+  /**
+   * Encaminha para a equipe (triagem). A IA não para: continua respondendo o que conseguir e analisa cada nova
+   * mensagem do cliente. Só pausa de verdade quando `pause` (ex.: limite diário de respostas).
+   */
+  handoff(conversationId: string, reason: string, notifyCustomer = false, opts: { pause?: boolean } = {}): void {
     const store = this.deps.store;
     const conv = store.getConversation(conversationId);
     if (!conv) return;
     void notifyCustomer;
-    const pauseUntil = this.now() + this.s.attendance.pauseOnHumanMinutes * 60_000;
+    const pauseUntil = opts.pause ? this.now() + this.s.attendance.pauseOnHumanMinutes * 60_000 : null;
+    const same = conv.state === "precisa_humano" && conv.handoffReason === reason;
     const updated = store.updateConversation(conversationId, { state: "precisa_humano", handoffReason: reason, aiPausedUntil: pauseUntil });
+    if (conv.state !== "precisa_humano") store.setKv(`handoffAt:${conversationId}`, this.now());
     store.addAiAction(conversationId, { at: this.now(), label: `Passou para humano: ${reason}`, kind: "handoff" });
-    this.addSystemEvent(conversationId, "handoff", `IA passou para humano · motivo: ${reason}`);
+    if (same) {
+      // o cliente voltou a falar do mesmo assunto: não repete aviso nem notificação
+      this.emit("conversation", store.getConversation(updated.id)!);
+      return;
+    }
+    this.addSystemEvent(
+      conversationId,
+      "handoff",
+      opts.pause ? `IA passou para humano · motivo: ${reason}` : `IA chamou a equipe · motivo: ${reason} · ela segue atendendo o que conseguir`,
+    );
     this.emit("conversation", store.getConversation(updated.id)!);
     if (this.s.app.notify !== "nenhuma") {
       this.emit("notify", {
@@ -1388,6 +1443,15 @@ export class Engine extends EventEmitter<EngineEvents> {
         conversationId,
       });
     }
+  }
+
+  /** A própria IA resolveu o assunto que tinha encaminhado: tira a conversa das pendências. */
+  private resolveTriage(conversationId: string, summary: string): void {
+    const store = this.deps.store;
+    const conv = store.updateConversation(conversationId, { state: "ia", handoffReason: null, aiPausedUntil: null });
+    store.addAiAction(conversationId, { at: this.now(), label: `Resolveu a pendência: ${summary}`, kind: "info" });
+    this.addSystemEvent(conversationId, "handoff_resolved", `IA resolveu a pendência sozinha · ${summary}`);
+    this.emit("conversation", conv);
   }
 
   takeOver(conversationId: string, operator: string): Conversation {
@@ -1593,14 +1657,17 @@ export class Engine extends EventEmitter<EngineEvents> {
     return r;
   }
 
-  /** Lojista cancelou a reserva pelo app. */
-  async cancelReservation(id: string): Promise<Reservation> {
+  /** Lojista cancelou a reserva pelo app, ou o cliente desistiu na conversa (by = "cliente"). */
+  async cancelReservation(id: string, by: "loja" | "cliente" = "loja"): Promise<Reservation> {
     const store = this.deps.store;
     const r = store.getReservation(id);
     if (!r) throw new Error("Reserva não encontrada");
     if (r.status !== "created" && r.status !== "pending_approval" && r.status !== "failed") return r;
     if (r.status === "created" && r.saleId) {
-      const out = await this.deps.nive.cancelDraftSale(r.saleId, "Reserva cancelada pela loja no Nive Atende");
+      const out = await this.deps.nive.cancelDraftSale(
+        r.saleId,
+        by === "cliente" ? "Cliente desistiu da reserva pelo WhatsApp (Nive Atende)" : "Reserva cancelada pela loja no Nive Atende",
+      );
       if (out === "not_draft") {
         const done = store.updateReservation(r.id, { status: "completed" });
         this.emit("reservation", done);
@@ -1612,7 +1679,9 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.addSystemEvent(
       r.conversationId,
       "reservation_expired",
-      `Reserva cancelada pela loja: ${r.quantity}× ${prettyName(r.productDescription)}${r.saleId ? " (rascunho cancelado no sistema)" : ""}`,
+      `${by === "cliente" ? "Cliente desistiu da reserva" : "Reserva cancelada pela loja"}: ${r.quantity}× ${prettyName(r.productDescription)}${
+        r.status === "created" && r.saleId ? ` (rascunho${r.orderNumber ? ` #${r.orderNumber}` : ""} cancelado no sistema e o estoque voltou)` : ""
+      }`,
     );
     return updated;
   }
