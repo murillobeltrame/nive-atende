@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.17 — 2026-11-25
+
+- **Sem limite de respostas por conversa:** a IA não para mais depois de 30 respostas no dia na mesma conversa. Conversas que tinham ido para "precisa de você" por esse limite voltam a ser atendidas na próxima mensagem do cliente. A opção saiu de Ajustes → Inteligência artificial; o alerta de gasto mensal continua.
+
 ## v0.3.16 — 2026-11-25
 
 - **Botão "Responder com a IA":** aparece no topo da conversa quando a última mensagem é do cliente e ninguém respondeu. A IA lê de novo o que ficou sem resposta e responde na hora, mesmo que as mensagens tenham chegado com o programa fechado, fora do horário ou com a IA pausada.
