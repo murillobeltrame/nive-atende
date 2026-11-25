@@ -79,6 +79,18 @@ export interface NiveDraftSale {
   orderNumber: number | null;
 }
 
+/** Promoção valendo agora no ERP (campanha, por quantidade, brinde ou atacarejo). */
+export interface NivePromotion {
+  id: string;
+  kind: "campaign" | "quantity" | "gift" | "wholesale";
+  name: string;
+  /** Regra em português ("Leve 3, pague 2", "Atacado: R$ 3,99 a partir de 12"). */
+  description: string;
+  endsAt: string | null;
+  productCount: number;
+  products: Array<{ id: string; description: string; priceCash: number; promoPrice: number | null }>;
+}
+
 /** Interface usada pelo motor (permite trocar por um falso nos testes). */
 export interface NiveApi {
   testConnection(): Promise<void>;
@@ -90,6 +102,8 @@ export interface NiveApi {
   /** Uma página do catálogo de mercadorias ativas (para o resumo do que a loja vende). */
   listProducts?(page: number, take: number): Promise<{ items: NiveProduct[]; total: number | null }>;
   createDraftSale(input: { customerId: string | null; variantId: string; quantity: number; notes: string }): Promise<NiveDraftSale>;
+  /** Promoções valendo agora; null quando o ERP ainda não tem a consulta. */
+  listActivePromotions?(term?: string): Promise<NivePromotion[] | null>;
   /** Clientes cujo nome é exatamente o informado (sem diferenciar acentos/maiúsculas). */
   findCustomersByName(name: string): Promise<NiveCustomer[]>;
   /** Clientes cujo nome contém todas as palavras informadas (ex.: "Aliny" → "Aliny Rocker Beltrame"). */
@@ -350,6 +364,34 @@ export class NiveClient implements NiveApi {
       if (e instanceof NiveApiError && e.status === 404) return null;
       throw e;
     }
+  }
+
+  async listActivePromotions(term = ""): Promise<NivePromotion[] | null> {
+    const q = term.trim().slice(0, 120);
+    let raw: Json;
+    try {
+      raw = await this.request<Json>("GET", `/products/promotions/active${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    } catch (e) {
+      // ERP antigo (rota não existe) ou chave sem acesso a produtos
+      if (e instanceof NiveApiError && (e.status === 404 || e.status === 403)) return null;
+      throw e;
+    }
+    const items = (Array.isArray(raw.items) ? raw.items : []) as Json[];
+    const kinds = ["campaign", "quantity", "gift", "wholesale"] as const;
+    return items.map((p) => ({
+      id: String(p.id ?? ""),
+      kind: (kinds as readonly string[]).includes(String(p.kind)) ? (p.kind as NivePromotion["kind"]) : "campaign",
+      name: String(p.name ?? ""),
+      description: String(p.description ?? ""),
+      endsAt: s(p.endsAt),
+      productCount: n(p.productCount),
+      products: ((Array.isArray(p.products) ? p.products : []) as Json[]).map((x) => ({
+        id: String(x.id ?? ""),
+        description: String(x.description ?? ""),
+        priceCash: n(x.priceCash),
+        promoPrice: x.promoPrice == null ? null : n(x.promoPrice),
+      })),
+    }));
   }
 
   async findCustomersByName(name: string): Promise<NiveCustomer[]> {

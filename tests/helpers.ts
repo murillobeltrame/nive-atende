@@ -3,7 +3,7 @@ import { Store } from "../src/main/store/db";
 import { DEFAULT_SETTINGS } from "../src/main/settings";
 import type { AppSettings, DeepPartial } from "../src/shared/types";
 import { deepMerge } from "../src/main/settings";
-import type { NiveApi, NiveCustomer, NiveProduct, NiveStatement } from "../src/main/nive/client";
+import type { NiveApi, NiveCustomer, NiveProduct, NiveStatement, NivePromotion } from "../src/main/nive/client";
 import type { AiChatResult, AiMessage, AiProvider, AiToolDef } from "../src/main/ai/openai";
 import type { SendResult, WhatsAppGateway } from "../src/main/evolution/client";
 import type { InboundMessage } from "../src/main/evolution/parse";
@@ -91,6 +91,12 @@ export class FakeNive implements NiveApi {
   }
   async getProduct(id: string): Promise<NiveProduct | null> {
     return PRODUCTS.find((p) => p.id === id) ?? null;
+  }
+  /** Promoções valendo (null = ERP sem a consulta). */
+  promotions: NivePromotion[] | null = [];
+  async listActivePromotions(): Promise<NivePromotion[] | null> {
+    this.calls.push("promotions");
+    return this.promotions;
   }
   namedCustomers: NiveCustomer[] = [];
   createdCustomers: Array<{ name: string; phone: string | null }> = [];

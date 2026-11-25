@@ -153,7 +153,7 @@ function hhmmToMinutes(v: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano)\b(\([^)]*\))?\)?\.?/g;
+const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano)\b(\([^)]*\))?\)?\.?/g;
 
 /** Texto final da IA para o WhatsApp, sem nome de ferramenta que ela às vezes escreve na resposta. */
 export function cleanReply(text: string): string {

@@ -1,6 +1,6 @@
 // Ferramentas que a IA pode chamar. Cada uma é executada pelo código, com as regras de segurança aqui.
 import type { AppSettings, Reservation } from "../../shared/types";
-import type { NiveApi, NiveProduct } from "../nive/client";
+import type { NiveApi, NiveProduct, NivePromotion } from "../nive/client";
 import type { IdentityService } from "../engine/identity";
 import type { Store } from "../store/db";
 import type { AiToolDef } from "./openai";
@@ -21,6 +21,21 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
         termo: { type: "string", description: "Palavra-chave do produto, ex.: 'perfume', 'tênis runner', 'bolsa couro'" },
         preco_max: { type: "number", description: "Opcional. Preço máximo em reais quando o cliente der um limite ('até 100 reais' → 100)." },
         preco_min: { type: "number", description: "Opcional. Preço mínimo em reais ('acima de 50' → 50)." },
+      },
+      required: ["termo"],
+      additionalProperties: false,
+    },
+  },
+  ver_promocoes: {
+    name: "ver_promocoes",
+    description:
+      "Varre as promoções que estão valendo agora na loja: preço promocional (de/por), leve X pague Y, X por R$ Z, desconto a partir de X unidades, brinde acima de um valor e preço de atacado. " +
+      "Use SEMPRE que o cliente falar em promoção, oferta, desconto do dia, 'o que tá barato', combo ou 'tem alguma promo de X'. " +
+      "Mande termo com o produto, marca ou categoria que o cliente citou ('vodka', 'red bull', 'cerveja'); se não citou nada, deixe vazio para ver todas.",
+    parameters: {
+      type: "object",
+      properties: {
+        termo: { type: "string", description: "Produto, marca ou categoria ('vodka', 'energético', 'bebidas'). Vazio para todas as promoções." },
       },
       required: ["termo"],
       additionalProperties: false,
@@ -149,7 +164,7 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
   transferir_para_humano: {
     name: "transferir_para_humano",
     description:
-      "Passa a conversa para uma pessoa da loja. Use só para desconto, troca, devolução, reclamação, defeito, pedido de humano, assunto pessoal ou quando a informação pedida não está nestas instruções nem nas ferramentas. Pergunta simples de produto, preço, estoque, horário ou da loja você mesmo responde.",
+      "Passa a conversa para uma pessoa da loja. Nunca use para pergunta de produto, preço, estoque ou promoção (consulte as ferramentas). Use só para desconto, troca, devolução, reclamação, defeito, pedido de humano, assunto pessoal ou quando a informação pedida não está nestas instruções nem nas ferramentas. Pergunta simples de produto, preço, estoque, horário ou da loja você mesmo responde.",
     parameters: {
       type: "object",
       properties: { motivo: { type: "string", description: "Motivo curto, ex.: 'pedido de desconto'" } },
@@ -161,6 +176,7 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
 
 const ACTIVITY: Record<string, string> = {
   buscar_produto: "Buscando produtos no sistema…",
+  ver_promocoes: "Conferindo as promoções da loja…",
   calcular_total: "Calculando o total…",
   ver_catalogo: "Conferindo o catálogo da loja…",
   aprender_apelido: "Anotando o apelido do produto…",
@@ -175,7 +191,7 @@ const ACTIVITY: Record<string, string> = {
 };
 
 export function toolsFor(settings: AppSettings, readOnly = false): AiToolDef[] {
-  const names = ["buscar_produto", "ver_catalogo", "calcular_total"];
+  const names = ["buscar_produto", "ver_promocoes", "ver_catalogo", "calcular_total"];
   if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto");
   if (settings.accounts.enabled) {
     names.push("consultar_contas");
@@ -227,10 +243,87 @@ export interface ToolRunState {
   products: Map<string, NiveProduct>;
   /** A rodada já mudou algo fora da conversa (reserva, transferência): a resposta não pode ser descartada. */
   sideEffect: boolean;
+  /** Preço de campanha valendo agora, por produto (calcular_total usa no lugar do preço normal). */
+  promoPrices: Map<string, number>;
+  /** A IA já consultou produtos ou promoções nesta rodada. */
+  searched: boolean;
+  /** Já recusou uma passagem para humano por pergunta que a IA mesma responde. */
+  handoffRefused: boolean;
 }
 
 export function newRunState(): ToolRunState {
-  return { money: new Set(), photos: [], actions: [], handoffReason: null, products: new Map(), sideEffect: false };
+  return {
+    money: new Set(),
+    photos: [],
+    actions: [],
+    handoffReason: null,
+    products: new Map(),
+    sideEffect: false,
+    promoPrices: new Map(),
+    searched: false,
+    handoffRefused: false,
+  };
+}
+
+// ---------------------------------------------------------------- promoções
+const PROMO_TTL_MS = 60_000;
+const promoCache = new WeakMap<object, { at: number; items: NivePromotion[] | null }>();
+
+/** Todas as promoções valendo agora (guardadas por 1 minuto). null = ERP sem a consulta. */
+export async function activePromotions(ctx: Pick<ToolContext, "nive" | "now">): Promise<NivePromotion[] | null> {
+  if (!ctx.nive.listActivePromotions) return null;
+  const hit = promoCache.get(ctx.nive);
+  if (hit && ctx.now() - hit.at < PROMO_TTL_MS) return hit.items;
+  const items = await ctx.nive.listActivePromotions("");
+  promoCache.set(ctx.nive, { at: ctx.now(), items });
+  return items;
+}
+
+function normWords(text: string): string[] {
+  return text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3);
+}
+
+/** Palavras de categoria ampla que o cliente usa e que não aparecem no nome do produto. */
+const BROAD_TERMS = new Set(["bebida", "bebidas", "promocao", "promocoes", "promo", "promos", "oferta", "ofertas", "produto", "produtos", "coisa", "coisas", "loja", "tudo", "geral"]);
+
+/** Explica a promoção para a IA, já com os valores no formato da loja. */
+function promoView(p: NivePromotion, state: ToolRunState, onlyIds?: Set<string>) {
+  const products = onlyIds ? p.products.filter((x) => onlyIds.has(x.id)) : p.products;
+  for (const x of products) {
+    addMoney(state, x.priceCash);
+    if (x.promoPrice != null) {
+      addMoney(state, x.promoPrice);
+      if (p.kind === "campaign") state.promoPrices.set(x.id, x.promoPrice);
+    }
+  }
+  for (const m of p.description.matchAll(/R\$\s*([\d.]+,\d{2})/g)) addMoney(state, Number(m[1]!.replace(/\./g, "").replace(",", ".")));
+  const fim = p.endsAt ? dateBR(p.endsAt) : null;
+  return {
+    promocao: p.name,
+    regra: p.description,
+    ...(fim ? { valida_ate: fim } : {}),
+    produtos: products.slice(0, 12).map((x) => ({
+      produto_id: x.id,
+      nome: prettyName(x.description),
+      ...(x.promoPrice != null && x.promoPrice < x.priceCash - 0.009
+        ? { de: formatBRL(x.priceCash), por: formatBRL(x.promoPrice) }
+        : { preco: formatBRL(x.priceCash) }),
+    })),
+    ...(products.length > 12 || p.productCount > products.length ? { outros_produtos: Math.max(products.length, p.productCount) - Math.min(12, products.length) } : {}),
+  };
+}
+
+/** Pedido de humano que é, na verdade, pergunta de produto/preço/promoção (a IA mesma responde). */
+export function isAnswerableHandoff(motivo: string): boolean {
+  const t = motivo.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  // esses continuam indo para a equipe
+  if (/(desconto|negoci|troca|devolu|reclama|defeito|estrag|humano|pessoa|atendente|gerente|dono|robo|cancel|pagamento pendente|pix errado|cobranca|divida|conta|parcela|falha ao reservar|reserva recusada|pessoal|ofens|xing)/.test(t)) return false;
+  return /(promo|oferta|preco|valor|quanto|produto|estoque|disponib|bebida|cardapio|catalogo|tem |marca|sabor|tamanho|combo|kit|opcao|opcoes|vodka|cerveja|refri|energetico|whisk|gin|vinho|cigarro|perfume)/.test(t);
 }
 
 function addMoney(state: ToolRunState, ...values: number[]): void {
@@ -301,6 +394,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         const total = variacoes.some((x) => x.disponivel === null) ? Infinity : variacoes.reduce((n, x) => n + (x.disponivel ?? 0), 0);
         return { p, variacoes, total };
       });
+      state.searched = true;
+      const promos = await activePromotions(ctx).catch(() => null);
+      const promoOf = (id: string) => (promos ?? []).filter((pr) => pr.products.some((x) => x.id === id));
       const allInStock = view.filter((x) => x.total > 0);
       const fits = (price: number) => (precoMax === null || price <= precoMax + 0.009) && (precoMin === null || price >= precoMin - 0.009);
       const inStock = priced ? allInStock.filter((x) => fits(x.p.priceCash)).sort((a, b) => a.p.priceCash - b.p.priceCash) : allInStock;
@@ -346,6 +442,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
             preco: formatBRL(p.priceCash),
             ...(p.priceCredit > 0 && Math.abs(p.priceCredit - p.priceCash) > 0.009 ? { preco_a_prazo: formatBRL(p.priceCredit) } : {}),
             tem_foto: Boolean(p.imageUrl),
+            ...(promoOf(p.id).length
+              ? { em_promocao: promoOf(p.id).map((pr) => promoView(pr, state, new Set([p.id]))).map(({ promocao, regra, produtos, ...rest }) => ({ promocao, regra, ...(produtos[0] && "por" in produtos[0] ? { por: produtos[0].por } : {}), ...rest })) }
+              : {}),
             ...(ctx.offered?.has(p.id) ? { ja_mostrado: true } : {}),
             variacoes: variacoes
               .filter((x) => x.disponivel === null || x.disponivel > 0)
@@ -361,6 +460,54 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
                   : "Esgotados: não ofereça. Só mencione se o cliente perguntar exatamente por um deles, e já sugira uma alternativa com estoque.",
             }
           : {}),
+      };
+    }
+
+    case "ver_promocoes": {
+      state.searched = true;
+      const termo = str(args.termo).slice(0, 80).trim();
+      const all = await activePromotions(ctx);
+      if (all === null) {
+        state.actions.push({ label: "Promoções: o sistema da loja ainda não informa as promoções", kind: "info" });
+        return {
+          resultado: "PROMOCOES_INDISPONIVEIS",
+          instrucao:
+            "O sistema não informou promoções agora. Não passe para outra pessoa por isso: busque os produtos que o cliente citou (buscar_produto) e mostre as opções com o preço, sem chamar de promoção.",
+        };
+      }
+      const words = normWords(termo).filter((w) => !BROAD_TERMS.has(w));
+      const hits = (pr: NivePromotion) =>
+        pr.products.filter((x) => {
+          const hay = normWords(`${x.description}`).join(" ");
+          return words.some((w) => hay.includes(w));
+        });
+      const nameHit = (pr: NivePromotion) => words.some((w) => normWords(`${pr.name} ${pr.description}`).join(" ").includes(w));
+      const filtered = words.length
+        ? all.filter((pr) => nameHit(pr) || hits(pr).length).map((pr) => ({ pr, only: nameHit(pr) ? undefined : new Set(hits(pr).map((x) => x.id)) }))
+        : all.map((pr) => ({ pr, only: undefined }));
+      // poucas promoções no total: mostra todas mesmo sem casar com o termo (varredura completa)
+      const fallback = words.length > 0 && !filtered.length;
+      const list = fallback ? all.map((pr) => ({ pr, only: undefined })) : filtered;
+      state.actions.push({
+        label: `Conferiu promoções${termo ? ` de “${termo}”` : ""} → ${filtered.length}${fallback ? ` (mostrando todas: ${all.length})` : ""}`,
+        kind: "info",
+      });
+      if (!all.length)
+        return {
+          resultado: "NENHUMA_PROMOCAO_AGORA",
+          instrucao:
+            "Não há promoção cadastrada valendo agora. Diga isso com naturalidade e já ofereça o que o cliente citou com o preço normal (use buscar_produto), sem passar para outra pessoa.",
+        };
+      // não mostra promoção de produto sem estoque (o ERP não manda estoque aqui: confere os que vão aparecer)
+      return {
+        ...(fallback
+          ? { obs: `Nenhuma promoção de "${termo}" agora. Estas são todas as promoções valendo; diga que de ${termo} não tem promoção agora e ofereça as que combinam, ou o produto com o preço normal (buscar_produto).` }
+          : {}),
+        total: list.length,
+        promocoes: list.slice(0, 15).map(({ pr, only }) => promoView(pr, state, only)),
+        instrucao:
+          "Apresente as promoções com a regra e os preços exatamente como vieram ('de R$ X por R$ Y', 'leve 3 pague 2'). Antes de prometer estoque de um item, confira com buscar_produto. " +
+          "Na promoção por quantidade, explique a regra; o desconto entra sozinho no caixa. Nunca passe para outra pessoa por causa de promoção.",
       };
     }
 
@@ -553,7 +700,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
     case "calcular_total": {
       const itens = Array.isArray(args.itens) ? (args.itens as Array<Record<string, unknown>>).slice(0, 30) : [];
       if (!itens.length) return { erro: "Informe os itens" };
-      const linhas: Array<{ produto: string; quantidade: number; unitario: string; subtotal: string }> = [];
+      const linhas: Array<{ produto: string; quantidade: number; unitario: string; preco_promocional?: boolean; subtotal: string }> = [];
       let total = 0;
       for (const it of itens) {
         const id = str(it.produto_id);
@@ -563,11 +710,19 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         const p = state.products.get(id) ?? (await ctx.nive.getProduct(id).catch(() => null));
         if (!p || !p.active) return { resultado: "PRODUTO_NAO_ENCONTRADO", produto_id: id, instrucao: "Busque o produto (buscar_produto) e use o produto_id devolvido." };
         state.products.set(p.id, p);
-        const sub = Math.round(p.priceCash * qty * 100) / 100;
+        const promo = state.promoPrices.get(p.id);
+        const unit = promo != null && promo < p.priceCash ? promo : p.priceCash;
+        const sub = Math.round(unit * qty * 100) / 100;
         total += sub;
-        addMoney(state, p.priceCash, sub);
+        addMoney(state, unit, sub);
         if (p.priceCredit > 0) addMoney(state, p.priceCredit, Math.round(p.priceCredit * qty * 100) / 100);
-        linhas.push({ produto: prettyName(p.description), quantidade: qty, unitario: formatBRL(p.priceCash), subtotal: formatBRL(sub) });
+        linhas.push({
+          produto: prettyName(p.description),
+          quantidade: qty,
+          unitario: formatBRL(unit),
+          ...(unit !== p.priceCash ? { preco_promocional: true } : {}),
+          subtotal: formatBRL(sub),
+        });
       }
       total = Math.round(total * 100) / 100;
       addMoney(state, total);
@@ -577,6 +732,18 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
 
     case "transferir_para_humano": {
       const motivo = str(args.motivo).slice(0, 120) || "pedido do cliente";
+      // pergunta de produto/preço/promoção é trabalho da IA: recusa uma vez e manda consultar
+      if (!state.handoffRefused && isAnswerableHandoff(motivo)) {
+        state.handoffRefused = true;
+        state.actions.push({ label: `Não passou para humano (“${motivo}”): consultou o sistema`, kind: "info" });
+        return {
+          resultado: "NAO_TRANSFERIDO",
+          instrucao:
+            "Isso é pergunta de produto, preço ou promoção: você mesmo responde. Use ver_promocoes (promoções/ofertas) e buscar_produto (produtos e preços), " +
+            "varrendo com termos amplos e sinônimos, e responda ao cliente com o que achou. Se não houver promoção, diga que agora não tem e mostre as opções com o preço normal. " +
+            "Não diga que vai chamar alguém.",
+        };
+      }
       state.handoffReason = motivo;
       state.sideEffect = true;
       state.actions.push({ label: `Passou para humano: ${motivo}`, kind: "handoff" });
