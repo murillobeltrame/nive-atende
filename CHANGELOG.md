@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.3.10 — 2026-11-25
+
+- **Motivo real quando a IA falha:** quando a plataforma de IA recusava a resposta, a conversa ia para "precisa de você" só com "erro ao gerar resposta". Agora o motivo vem junto (por exemplo, modelo não liberado na conta ou imagem que não abriu), para saber o que ajustar.
+- **Status da IA sem "IA ok" enganoso:** se as respostas estiverem falhando, a barra de status avisa "Respostas da IA falhando" com o motivo, mesmo que a chave esteja certa. O aviso some sozinho quando a próxima resposta dá certo.
+
 ## v0.3.9 — 2026-11-10
 
 - **Telas em largura total:** Pendências, Reservas, Consumo e Configurações usam a janela inteira (antes sobrava uma faixa vazia à direita). Nas Configurações, em janela larga, os cartões ficam lado a lado.
