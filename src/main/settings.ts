@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accounts: { enabled: true, secondFactor: "birthdate", showCharges: true },
   location: { name: "", address: "", latitude: null, longitude: null },
   personality: { storeName: "", tone: "proximo", emojis: true, signature: "", presentAsAssistant: false, context: "" },
-  ai: { provider: "openai", monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
+  ai: { provider: "openai", monthlyAlertUsd: 10, historyMessages: 40, learnFromStore: true },
   audio: { transcribe: true, maxSeconds: 120 },
   app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "", dailySummary: true, dailySummaryHour: 19 },
   termsAcceptedAt: null,

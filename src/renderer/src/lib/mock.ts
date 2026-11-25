@@ -142,7 +142,7 @@ export function createMockApi(): NiveAtendeApi {
       presentAsAssistant: false,
       context: "",
     },
-    ai: { provider: "openai", monthlyAlertUsd: 10, maxAiRepliesPerConversationPerDay: 30, historyMessages: 40, learnFromStore: true },
+    ai: { provider: "openai", monthlyAlertUsd: 10, historyMessages: 40, learnFromStore: true },
     audio: { transcribe: true, maxSeconds: 120 },
     app: { launchAtLogin: true, notify: "humano", sound: true, ownerAlertNumber: "", operatorName: "Murillo", dailySummary: true, dailySummaryHour: 19 },
     termsAcceptedAt: params.get("terms") === "0" ? null : now - 86_400_000,

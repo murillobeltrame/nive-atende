@@ -842,13 +842,6 @@ function AiSection({ settings, onSettings }: Pick<Props, "settings" | "onSetting
               hint="Avisamos quando o gasto estimado do mês passar deste valor."
             />
             <Num
-              label="Máximo de respostas da IA por conversa por dia"
-              value={ai.maxAiRepliesPerConversationPerDay}
-              min={1}
-              onChange={(v) => setAi({ ...ai, maxAiRepliesPerConversationPerDay: v })}
-              hint="Depois disso, a conversa passa para você."
-            />
-            <Num
               label="Mensagens anteriores que a IA lê"
               value={ai.historyMessages ?? 40}
               min={6}

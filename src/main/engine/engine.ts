@@ -308,8 +308,9 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
     if (ignored) return;
 
-    // humano em atendimento: só avisa
-    if (updated.aiPausedUntil && updated.aiPausedUntil > this.now()) {
+    // humano em atendimento: só avisa (a pausa do antigo limite diário de respostas não vale mais)
+    const oldLimitPause = updated.handoffReason?.startsWith("limite diário de respostas") ?? false;
+    if (!oldLimitPause && updated.aiPausedUntil && updated.aiPausedUntil > this.now()) {
       store.markProcessed([msg.id]);
       if (s.app.notify === "humano" && updated.state !== "ia") {
         this.emit("notify", { kind: "message", title: updated.customerName ?? updated.displayName, body: preview(msg), conversationId: conv.id });
@@ -564,6 +565,11 @@ export class Engine extends EventEmitter<EngineEvents> {
 
     // pedido do lojista pelo botão "Responder com a IA": ignora pausa, horário e janela de mensagens antigas
     const forced = this.forcedReply.has(conversationId);
+    // conversa travada pelo antigo limite diário de respostas (removido): volta a ser atendida
+    if (conv.handoffReason?.startsWith("limite diário de respostas")) {
+      conv = store.updateConversation(conv.id, { state: "ia", aiPausedUntil: null, handoffReason: null });
+      this.emit("conversation", conv);
+    }
     if (conv.state === "ignorado") return store.markProcessed(ids);
     if (!forced && !s.attendance.autoEnabled) return store.markProcessed(ids);
     if (!forced && conv.aiPausedUntil && conv.aiPausedUntil > this.now()) return store.markProcessed(ids);
@@ -597,14 +603,6 @@ export class Engine extends EventEmitter<EngineEvents> {
         store.updateConversation(conv.id, { outOfHoursNoticeAt: this.now() });
       }
       return;
-    }
-
-    // limite diário de respostas da IA por conversa
-    const today = localDay(this.now());
-    const aiToday = store.listMessages(conv.id, 200).filter((m) => m.origin === "ia" && localDay(m.createdAt) === today).length;
-    if (!forced && aiToday >= s.ai.maxAiRepliesPerConversationPerDay) {
-      store.markProcessed(ids);
-      return this.handoff(conv.id, "limite diário de respostas da IA nesta conversa", false, { pause: true });
     }
 
     // conversa pessoal do dono com esse contato? então não interfere

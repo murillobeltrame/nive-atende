@@ -232,7 +232,6 @@ export interface AppSettings {
     /** Plataforma que responde os clientes. */
     provider: AiProviderId;
     monthlyAlertUsd: number;
-    maxAiRepliesPerConversationPerDay: number;
     /** Quantas mensagens anteriores da conversa a IA lê para responder. */
     historyMessages: number;
     /** Usa respostas recentes da equipe como exemplo do jeito da loja. */

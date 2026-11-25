@@ -82,7 +82,6 @@ export class Simulator extends EventEmitter<{ message: [ChatMessage]; activity: 
     s.attendance.replyDelayMaxSec = 0;
     s.attendance.onlyStoreTopics = false;
     s.attendance.ignoredNumbers = [];
-    s.ai.maxAiRepliesPerConversationPerDay = 1000;
     s.reservation.autoEnabled = true;
     return s;
   }

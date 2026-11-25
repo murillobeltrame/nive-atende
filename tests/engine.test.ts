@@ -158,18 +158,25 @@ describe("resposta automática", () => {
     expect(t.store.listMessages(JID).some((m) => m.eventType === "handoff_resolved")).toBe(true);
   });
 
-  it("limite diário de respostas ainda pausa a IA de verdade", async () => {
-    const t = setup({ settings: { ai: { maxAiRepliesPerConversationPerDay: 1 } } });
+  it("sem limite diário: a IA continua respondendo na mesma conversa", async () => {
+    const t = setup();
+    for (let i = 0; i < 35; i++) {
+      await t.engine.handleInbound(inbound(PHONE, `pergunta ${i}`));
+      await t.clock.advance(2000);
+    }
+    expect(t.wa.sent).toHaveLength(35);
+    expect(t.store.getConversation(JID)!.state).not.toBe("precisa_humano");
+  });
+
+  it("conversa travada pelo limite antigo volta a ser atendida", async () => {
+    const t = setup();
     await t.engine.handleInbound(inbound(PHONE, "oi"));
     await t.clock.advance(2000);
+    t.store.updateConversation(JID, { state: "precisa_humano", handoffReason: "limite diário de respostas da IA nesta conversa", aiPausedUntil: t.clock.now() + 3600_000 });
     await t.engine.handleInbound(inbound(PHONE, "tem bolsa?"));
     await t.clock.advance(2000);
-    const conv = t.store.getConversation(JID)!;
-    expect(conv.state).toBe("precisa_humano");
-    expect(conv.aiPausedUntil).not.toBeNull();
-    await t.engine.handleInbound(inbound(PHONE, "alô?"));
-    await t.clock.advance(2000);
-    expect(t.wa.sent).toHaveLength(1);
+    expect(t.wa.sent).toHaveLength(2);
+    expect(t.store.getConversation(JID)!.state).toBe("ia");
   });
 
   it("formas de pagamento vêm do sistema, sem o crediário", async () => {
