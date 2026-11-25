@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## v0.3.15 — 2026-11-25
+
+- **A IA não larga mais o cliente depois de chamar a equipe:** quando um assunto precisa de alguém da loja, a conversa vai para "precisa de você", mas a IA continua no atendimento. Se o cliente voltar a falar, ela lê a mensagem: o que ela resolve (produto, preço, horário…) ela responde; se for o mesmo assunto, avisa que a equipe já está vendo, sem repetir a notificação; e se a nova mensagem resolver a pendência (o cliente explicou melhor, mudou de ideia), ela mesma tira a conversa das pendências. Quando alguém da equipe responde, a IA pausa como antes.
+- **Formas de pagamento direto do sistema:** "aceita pix?", "passa cartão?" são respondidos com as formas de pagamento ativas no Nive ERP.
+- **Crediário sempre com a equipe:** pedido de crediário, fiado, carnê ou "marcar na conta" vai sempre para a equipe decidir; a IA nunca aprova nem nega.
+- **Cliente desistiu? A reserva é cancelada:** quando o cliente diz que não quer mais, a IA cancela a reserva. Se ela ainda esperava aprovação, some das pendências; se você já tinha aprovado, o rascunho é cancelado no sistema e o produto volta ao estoque. Venda já finalizada vai para a equipe.
+
 ## v0.3.14 — 2026-11-25
 
 - **IA responde sobre promoções:** "tem promoção de vodka e red bull?" ia para "precisa de você". Agora a IA consulta no Nive ERP tudo o que está em promoção (preço de/por, leve 3 pague 2, X por R$ Y, desconto por quantidade, brinde acima de um valor e preço de atacado) e responde com a regra e os preços. Se não tiver promoção do que o cliente pediu, ela avisa e já mostra as opções com o preço normal.
