@@ -59,6 +59,7 @@ export type SystemEventType =
   | "reservation_expired"
   | "personal" // IA não respondeu: conversa pessoal
   | "paused_by_phone" // humano respondeu pelo celular
+  | "auto_messages" // cliente/loja ligou ou desligou as mensagens automáticas
   | "error";
 
 /** Estado da conversa, usado para filtros e etiquetas da lista. */
@@ -90,6 +91,8 @@ export interface Conversation {
   unread: number;
   /** Enquanto no futuro, a IA não responde nesta conversa. */
   aiPausedUntil: number | null;
+  /** Cliente pediu para não receber mais mensagens automáticas (lembretes, avisos, retomadas). */
+  autoMessagesOff?: boolean;
   handoffReason: string | null;
   lastAiActions: AiAction[];
   aiRepliesCount: number;

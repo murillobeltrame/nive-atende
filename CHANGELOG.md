@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.3.18 — 2026-11-26
+
+- **Reserva cancelada não recebe mais lembrete:** antes de lembrar o cliente, o app confere a reserva no Nive ERP na hora. Se o rascunho foi cancelado, excluído ou finalizado por lá, o lembrete não sai. Se o cliente já disse na conversa que desistiu e a reserva ficou de pé, o app não lembra e manda a conversa para "precisa de você" conferir.
+- **A IA sabe o que está separado de verdade:** ela recebe a situação atual das reservas do cliente (separadas, canceladas, vencidas) e não fala mais de produto "separado" que já foi cancelado.
+- **"Cancela tudo" cancela tudo:** quando o cliente desiste de todas as reservas, a IA cancela todas de uma vez, em vez de uma só.
+- **Cliente pode parar as mensagens automáticas:** lembrete de reserva e aviso de chegada trazem "É só responder PARAR". Respondendo PARAR (ou pedindo com as próprias palavras, como "para de me mandar mensagem"), o cliente não recebe mais lembretes, avisos nem retomadas de conversa; a IA continua respondendo o que ele perguntar. VOLTAR religa.
+- **Controle na conversa:** no painel do cliente, "Mensagens automáticas" mostra se estão ligadas ou desligadas, e você pode mudar ali.
+
 ## v0.3.17 — 2026-11-25
 
 - **Sem limite de respostas por conversa:** a IA não para mais depois de 30 respostas no dia na mesma conversa. Conversas que tinham ido para "precisa de você" por esse limite voltam a ser atendidas na próxima mensagem do cliente. A opção saiu de Ajustes → Inteligência artificial; o alerta de gasto mensal continua.

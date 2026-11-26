@@ -102,6 +102,18 @@ export const IconPause = (p: P) => (
     <path d="M8 5v14M16 5v14" />
   </Svg>
 );
+export const IconBell = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" />
+    <path d="M10 20.5a2 2 0 0 0 4 0" />
+  </Svg>
+);
+export const IconBellOff = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 5.3A6 6 0 0 1 18 11v4M6 11v5l-1.5 2H17" />
+    <path d="M10 20.5a2 2 0 0 0 4 0M3 3l18 18" />
+  </Svg>
+);
 export const IconMic = (p: P) => (
   <Svg {...p}>
     <rect x="9" y="3" width="6" height="11" rx="3" />

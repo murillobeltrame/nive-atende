@@ -24,6 +24,10 @@ export interface PromptContext {
   catalogSummary?: string | null;
   /** Apelidos de produtos que a loja conhece ("abelhinha" → Atheeri). */
   nicknames?: ProductNickname[];
+  /** Reservas desta conversa agora (ativas e encerradas nos últimos dias). */
+  reservations?: { active: string[]; closed: string[] };
+  /** O cliente pediu para não receber mensagens automáticas. */
+  autoMessagesOff?: boolean;
 }
 
 const DAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -77,7 +81,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "- Faixa de preço ('até 100 reais', 'algo barato', 'na faixa de 50'): use buscar_produto com preco_max/preco_min e já mostre as opções que cabem, com o preço. Pode repetir o limite que o cliente disse ('Até R$ 100,00 tenho estes:').",
     "- Total, troco ou valor de mais de uma unidade ('quanto fica 2?', 'e com o gelo?'): use calcular_total. Nunca faça a conta de cabeça.",
     "- Mensagem curta, com gíria ou erro de digitação ('tem skol latão?', 'qnto ta a coca 2l', 'whiskey'): entenda o que um atendente entenderia e busque. Se a primeira busca não achar, tente sinônimos e o nome comum ('uísque', 'whisky', 'coca-cola', 'refri') antes de dizer que não tem.",
-    "- Cliente desistiu do que tinha pedido para separar ('não quero mais', 'pode cancelar', 'desisti'): use cancelar_reserva. Se não estiver claro se desistiu, pergunte antes. Não tente convencer a ficar.",
+    "- Cliente desistiu do que tinha pedido para separar ('não quero mais', 'pode cancelar', 'desisti'): use cancelar_reserva. Se ele desistir de tudo ('cancela tudo', 'as duas', 'todas'), use reserva_id 'todas'. Se não estiver claro se desistiu, pergunte antes. Não tente convencer a ficar.",
+    "- Cliente não quer mais receber lembretes, avisos ou mensagens da loja ('para de me mandar mensagem', 'não quero mais avisos'): use mensagens_automaticas com receber=false e confirme numa frase, sem insistir. Se ele pedir para voltar a receber, use receber=true.",
     "- Formas de pagamento ('aceita pix?', 'passa cartão?', 'como posso pagar?'): use ver_formas_pagamento e responda com o que o sistema devolver.",
     "- Crediário, fiado, carnê ou 'marcar na conta': quem decide é sempre a equipe. Nunca aprove, negue nem explique condições; diga que a equipe já vê isso com ele e use transferir_para_humano com o motivo 'cliente quer crediário'.",
     "- Nunca escreva o nome de uma ferramenta na mensagem ao cliente.",
@@ -205,6 +210,18 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   if (ctx.customerNotes?.length) {
     lines.push("- O que este cliente já contou antes (use com naturalidade, sem dizer que anotou):", ...ctx.customerNotes.map((n) => `  • ${n}`));
   }
+  const rs = ctx.reservations;
+  if (rs?.active.length) {
+    lines.push("- Reservas deste cliente valendo agora (só estas estão separadas):", ...rs.active.map((r) => `  • ${r}`));
+  }
+  if (rs?.closed.length) {
+    lines.push(
+      "- Reservas encerradas (NÃO estão mais separadas; nunca diga que estão, nem ofereça juntar algo a elas):",
+      ...rs.closed.map((r) => `  • ${r}`),
+    );
+  }
+  if (rs && !rs.active.length) lines.push("- Não há nada separado para este cliente agora. Mesmo que a conversa acima fale de reserva, ela já não vale.");
+  if (ctx.autoMessagesOff) lines.push("- O cliente pediu para não receber mensagens automáticas: responda só ao que ele perguntar, sem lembretes nem cobranças.");
   if (ctx.blocked) lines.push("- Consulta de contas bloqueada para este número por tentativas erradas. Não tente identificar de novo.");
   else if (ctx.identity)
     lines.push(`- Cliente identificado: ${ctx.identity.name.split(/\s+/)[0]} (${ctx.identity.by === "phone" ? "pelo telefone do cadastro" : "pelo CPF"}).`);

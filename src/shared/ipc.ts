@@ -85,6 +85,8 @@ export interface NiveAtendeApi {
   /** Preferências que a IA anotou sobre o cliente. */
   getCustomerNotes(conversationId: string): Promise<string[]>;
   removeCustomerNote(conversationId: string, note: string): Promise<string[]>;
+  /** Liga/desliga lembretes, avisos de chegada e retomadas automáticas para este cliente. */
+  setAutoMessages(conversationId: string, on: boolean): Promise<Conversation>;
 
   /** Apelidos de produtos ("abelhinha" → Atheeri): cadastrados pelo lojista ou aprendidos pela IA. */
   listNicknames(): Promise<ProductNickname[]>;
@@ -190,6 +192,7 @@ export const RPC_METHODS = [
   "replyNow",
   "getCustomerNotes",
   "removeCustomerNote",
+  "setAutoMessages",
   "listNicknames",
   "addNickname",
   "removeNickname",

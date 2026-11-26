@@ -716,6 +716,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   replyNow: (id) => engine.replyNow(id),
   getCustomerNotes: async (id) => engine.getCustomerNotes(id),
   removeCustomerNote: async (id, note) => engine.removeCustomerNote(id, note),
+  setAutoMessages: async (id, on) => engine.setAutoMessages(id, on, "loja"),
   listNicknames: async () => engine.listNicknames(),
   addNickname: async (apelido, termo) => engine.addNickname(apelido, termo),
   removeNickname: async (apelido) => engine.removeNickname(apelido),

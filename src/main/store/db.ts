@@ -240,6 +240,7 @@ export class Store {
       lastOrigin: strOrNull(r.last_origin) as MessageOrigin | null,
       unread: num(r.unread),
       aiPausedUntil: numOrNull(r.ai_paused_until),
+      autoMessagesOff: Boolean(this.getKv(`optout:${str(r.id)}`)),
       handoffReason: strOrNull(r.handoff_reason),
       lastAiActions: JSON.parse(str(r.last_ai_actions) || "[]") as AiAction[],
       aiRepliesCount: num(r.ai_replies),

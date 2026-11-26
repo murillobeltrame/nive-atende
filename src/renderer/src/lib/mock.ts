@@ -671,6 +671,11 @@ export function createMockApi(): NiveAtendeApi {
     async removeCustomerNote() {
       return ["Veste M"];
     },
+    async setAutoMessages(id, on) {
+      const c = conversations.find((x) => x.id === id)!;
+      c.autoMessagesOff = !on;
+      return { ...c };
+    },
     async listNicknames() {
       return mockNicknames.map((n) => ({ ...n }));
     },

@@ -287,6 +287,24 @@ p {
 .switch-label strong {
   color: var(--brand-dark);
 }
+/* mensagens automáticas do cliente (painel da conversa) */
+.switch.auto-msgs {
+  width: 100%;
+  gap: 8px;
+  color: var(--brand-dark);
+}
+.switch.auto-msgs .switch-label {
+  flex: 1;
+}
+.switch.auto-msgs .switch-track {
+  margin-left: auto;
+}
+.switch.auto-msgs.off {
+  color: var(--text-2);
+}
+.switch.auto-msgs.off .switch-label strong {
+  color: var(--text-2);
+}
 /* atendimento parado por outro motivo: o interruptor continua clicável, mas sai de cena */
 .switch.dim {
   opacity: 0.55;

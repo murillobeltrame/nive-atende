@@ -176,13 +176,25 @@ export const TOOL_DEFS: Record<string, AiToolDef> = {
     name: "cancelar_reserva",
     description:
       "Cancela uma reserva deste cliente quando ele desistir da compra ('não quero mais', 'pode cancelar', 'desisti'). Se a loja já tinha aprovado, o rascunho é cancelado no sistema e o produto volta ao estoque. " +
-      "Sem produto_id, mostra as reservas ativas desta conversa. Use só quando a desistência estiver clara; se tiver dúvida, pergunte antes.",
+      "Sem reserva_id, mostra as reservas ativas desta conversa; reserva_id 'todas' cancela todas de uma vez. Use só quando a desistência estiver clara; se tiver dúvida, pergunte antes.",
     parameters: {
       type: "object",
       properties: {
-        reserva_id: { type: "string", description: "reserva_id devolvido por esta ferramenta. Vazio para listar as reservas ativas." },
+        reserva_id: { type: "string", description: "reserva_id devolvido por esta ferramenta, 'todas' para cancelar todas, ou vazio para listar as reservas ativas." },
       },
       required: ["reserva_id"],
+      additionalProperties: false,
+    },
+  },
+  mensagens_automaticas: {
+    name: "mensagens_automaticas",
+    description:
+      "Liga ou desliga as mensagens automáticas da loja para este cliente (lembrete de reserva, aviso de chegada, retomada de conversa). " +
+      "Use receber=false quando ele pedir para parar de receber mensagens/avisos/lembretes; receber=true quando pedir para voltar a receber.",
+    parameters: {
+      type: "object",
+      properties: { receber: { type: "boolean", description: "false = não mandar mais; true = voltar a mandar" } },
+      required: ["receber"],
       additionalProperties: false,
     },
   },
@@ -224,6 +236,7 @@ const ACTIVITY: Record<string, string> = {
   resolvido_sem_equipe: "Resolvendo a pendência…",
   ver_formas_pagamento: "Conferindo as formas de pagamento…",
   cancelar_reserva: "Cancelando a reserva…",
+  mensagens_automaticas: "Atualizando os avisos do cliente…",
   enviar_localizacao: "Separando a localização da loja…",
   anotar_preferencia: "Anotando a preferência do cliente…",
   avisar_quando_chegar: "Registrando o aviso de chegada…",
@@ -231,7 +244,7 @@ const ACTIVITY: Record<string, string> = {
 
 export function toolsFor(settings: AppSettings, readOnly = false, triage = false, hasLocation = false): AiToolDef[] {
   const names = ["buscar_produto", "ver_promocoes", "ver_catalogo", "calcular_total"];
-  if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto", "cancelar_reserva");
+  if (!readOnly) names.push("mostrar_foto_produto", "reservar_produto", "cancelar_reserva", "mensagens_automaticas");
   if (settings.accounts.enabled) {
     names.push("consultar_contas");
     if (!readOnly) names.push("identificar_cliente", "confirmar_data_nascimento");
@@ -266,6 +279,8 @@ export interface ToolContext {
   activeReservations?: () => Reservation[];
   /** Cancela a reserva porque o cliente desistiu (rascunho aprovado é cancelado no ERP e o estoque volta). */
   cancelReservation?: (id: string) => Promise<Reservation>;
+  /** Liga/desliga lembretes e avisos automáticos para este cliente. */
+  setAutoMessages?: (on: boolean) => unknown;
   /** Cria a reserva (rascunho no ERP ou pendente de aprovação). */
   reserve: (input: {
     product: NiveProduct;
@@ -803,28 +818,63 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         }));
       if (!ativas.length) return { resultado: "SEM_RESERVAS_ATIVAS", instrucao: "Diga que não há nada separado no nome dele agora." };
       const id = str(args.reserva_id).trim();
-      const alvo = id ? ativas.find((r) => r.id === id) : ativas.length === 1 ? ativas[0] : undefined;
-      if (!alvo) {
+      const todas = /^(todas|todos|tudo|all|\*)$/i.test(id);
+      const alvos = todas ? ativas : (id ? ativas.filter((r) => r.id === id) : ativas.length === 1 ? ativas : []);
+      if (!alvos.length) {
         return {
           resultado: "ESCOLHA_A_RESERVA",
           reservas: listar(),
-          instrucao: id ? "Esse reserva_id não é desta conversa. Use um da lista." : "Há mais de uma reserva: pergunte qual ele quer cancelar (ou se são todas) e chame de novo com o reserva_id.",
+          instrucao: id
+            ? "Esse reserva_id não é desta conversa. Use um da lista (ou 'todas')."
+            : "Há mais de uma reserva: pergunte qual ele quer cancelar (ou se são todas) e chame de novo com o reserva_id, ou com 'todas'.",
         };
       }
       if (!ctx.cancelReservation) return { erro: "Cancelamento indisponível" };
-      try {
-        const r = await ctx.cancelReservation(alvo.id);
-        state.sideEffect = true;
-        state.actions.push({ label: `Cliente desistiu: reserva de ${r.quantity}× ${prettyName(r.productDescription)} cancelada`, kind: "info" });
-        return { resultado: "RESERVA_CANCELADA", instrucao: "Confirme ao cliente com naturalidade que cancelou e deixe a porta aberta, sem insistir." };
-      } catch (e) {
-        state.actions.push({ label: `Falha ao cancelar a reserva de ${prettyName(alvo.productDescription)}`, kind: "error" });
-        const finalizada = /finalizada/i.test((e as Error).message);
+      const canceladas: string[] = [];
+      const falhas: Array<{ produto: string; finalizada: boolean }> = [];
+      for (const alvo of alvos) {
+        try {
+          const r = await ctx.cancelReservation(alvo.id);
+          state.sideEffect = true;
+          canceladas.push(prettyName(r.productDescription));
+          state.actions.push({ label: `Cliente desistiu: reserva de ${r.quantity}× ${prettyName(r.productDescription)} cancelada`, kind: "info" });
+        } catch (e) {
+          state.actions.push({ label: `Falha ao cancelar a reserva de ${prettyName(alvo.productDescription)}`, kind: "error" });
+          falhas.push({ produto: prettyName(alvo.productDescription), finalizada: /finalizada/i.test((e as Error).message) });
+        }
+      }
+      if (!falhas.length) {
         return {
-          resultado: finalizada ? "VENDA_JA_FINALIZADA" : "FALHA_AO_CANCELAR",
-          instrucao: "Diga que a equipe vai ver o cancelamento com ele e use transferir_para_humano com o motivo 'cliente desistiu, cancelar " + (finalizada ? "venda já finalizada" : "reserva") + "'.",
+          resultado: "RESERVA_CANCELADA",
+          canceladas,
+          instrucao: "Confirme ao cliente com naturalidade que cancelou e deixe a porta aberta, sem insistir.",
         };
       }
+      const finalizada = falhas.some((f) => f.finalizada);
+      return {
+        resultado: finalizada ? "VENDA_JA_FINALIZADA" : "FALHA_AO_CANCELAR",
+        canceladas,
+        nao_canceladas: falhas.map((f) => f.produto),
+        instrucao:
+          (canceladas.length ? "Confirme o que foi cancelado. " : "") +
+          "Do que não deu para cancelar, diga que a equipe vai ver com ele e use transferir_para_humano com o motivo 'cliente desistiu, cancelar " +
+          (finalizada ? "venda já finalizada" : "reserva") +
+          "'.",
+      };
+    }
+
+    case "mensagens_automaticas": {
+      const receber = args.receber === true || args.receber === "true";
+      if (!ctx.setAutoMessages) return { erro: "Indisponível" };
+      ctx.setAutoMessages(receber);
+      state.sideEffect = true;
+      state.actions.push({ label: receber ? "Cliente reativou as mensagens automáticas" : "Cliente pediu para não receber mensagens automáticas", kind: "info" });
+      return {
+        resultado: receber ? "AVISOS_LIGADOS" : "AVISOS_DESLIGADOS",
+        instrucao: receber
+          ? "Confirme numa frase que ele volta a receber os lembretes e avisos."
+          : "Confirme numa frase que não vai mais mandar lembretes nem avisos automáticos, e que ele pode chamar quando quiser. Não insista.",
+      };
     }
 
     case "ver_formas_pagamento": {

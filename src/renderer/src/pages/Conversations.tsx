@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { aiConfigured } from "../../../shared/ai-catalog";
 import { Composer } from "../components/Composer";
-import { IconAlert, IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
+import { IconAlert, IconBell, IconBellOff, IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
 import { MessageBubble } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
@@ -183,6 +183,41 @@ function SetupChecklist({
   );
 }
 
+/** Lembretes de reserva, avisos de chegada e retomadas: o cliente pode pedir para parar (PARAR) e o lojista vê e muda aqui. */
+function AutoMessages({ c }: { c: Conversation }) {
+  const [busy, setBusy] = useState(false);
+  const off = Boolean(c.autoMessagesOff);
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    try {
+      await api.setAutoMessages(c.id, on);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <div className="panel-sep" />
+      <div className="stack" style={{ gap: 6 }}>
+        <span className="panel-label">Mensagens automáticas</span>
+        <label className={`switch auto-msgs${off ? " off" : ""}`} title="Lembrete de reserva, aviso de chegada e retomada de conversa parada">
+          {off ? <IconBellOff size={15} /> : <IconBell size={15} />}
+          <span className="switch-label">
+            <strong>{off ? "Desligadas" : "Ligadas"}</strong>
+          </span>
+          <input type="checkbox" role="switch" checked={!off} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+          <span className="switch-track" aria-hidden="true" />
+        </label>
+        <span className="unverified">
+          {off
+            ? "Este cliente não recebe lembretes nem avisos. A IA continua respondendo o que ele perguntar."
+            : "O cliente pode desligar respondendo PARAR."}
+        </span>
+      </div>
+    </>
+  );
+}
+
 /** Preferências que a IA lembra deste cliente (o lojista pode apagar). */
 function CustomerNotes({ c }: { c: Conversation }) {
   const [notes, setNotes] = useState<string[]>([]);
@@ -276,6 +311,7 @@ function ClientPanel({ c }: { c: Conversation }) {
         )}
         <span style={{ color: "var(--muted)" }}>{formatPhone(c.phone)}</span>
       </div>
+      <AutoMessages c={c} />
       <CustomerNotes c={c} />
       <div className="panel-sep" />
       <div className="stack" style={{ gap: 9 }}>

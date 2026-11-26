@@ -99,6 +99,14 @@ export interface EngineEvents {
 }
 
 const MAX_TOOL_ROUNDS = 7;
+/** Rodapé das mensagens automáticas: o cliente sabe como parar de recebê-las. */
+const OPT_OUT_HINT = "\n\n_Não quer mais receber esses avisos? É só responder *PARAR*._";
+/** Resposta curta que desliga as mensagens automáticas na hora (sem passar pela IA). */
+const OPT_OUT_RE = /^(parar|pare|para|sair|stop|cancelar avisos|parar avisos|parar lembretes|nao quero mais (receber )?(mensagens|mensagem|avisos|lembretes))$/;
+/** Resposta curta que religa as mensagens automáticas. */
+const OPT_IN_RE = /^(voltar|voltar avisos|reativar|reativar avisos|quero receber (os )?(avisos|lembretes|mensagens))$/;
+/** Cliente desistiu do que pediu para separar (texto já normalizado). */
+const GAVE_UP_RE = /\b(cancela|cancelar|cancele|cancelou|cancelei|desisti|desisto|nao quero mais|nao vou (mais )?(buscar|pegar|querer|passar)|pode tirar|tira (a|as|o|os|minha|minhas) reserva|pode liberar|libera (a|as) reserva)/;
 /** Cliente pedindo crediário / fiado / marcar na conta: a equipe sempre decide. */
 const STORE_CREDIT_RE = /credi[aá]rio|\bfiado\b|\bcarn[eê]\b|caderneta|marca(r)?\s+(na|no)\s+(minha\s+|meu\s+)?(conta|ficha|nome|caderno)|\bpendura(r)?\b/i;
 /** Pendência de triagem sem ninguém da equipe mexer por mais que isso: o cliente voltou com outro assunto. */
@@ -168,7 +176,7 @@ function hhmmToMinutes(v: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano|resolvido_sem_equipe|ver_formas_pagamento|cancelar_reserva|enviar_localizacao)\b(\([^)]*\))?\)?\.?/g;
+const TOOL_NAMES_RE = /\s*\(?\b(buscar_produto|ver_promocoes|ver_catalogo|calcular_total|aprender_apelido|mostrar_foto_produto|reservar_produto|identificar_cliente|confirmar_data_nascimento|consultar_contas|avisar_quando_chegar|anotar_preferencia|transferir_para_humano|resolvido_sem_equipe|ver_formas_pagamento|cancelar_reserva|enviar_localizacao|mensagens_automaticas)\b(\([^)]*\))?\)?\.?/g;
 
 /** Texto final da IA para o WhatsApp, sem nome de ferramenta que ela às vezes escreve na resposta. */
 export function cleanReply(text: string): string {
@@ -307,6 +315,26 @@ export class Engine extends EventEmitter<EngineEvents> {
       this.emit("notify", { kind: "message", title: updated.customerName ?? updated.displayName, body: preview(msg), conversationId: conv.id });
     }
     if (ignored) return;
+
+    // "PARAR" / "VOLTAR": liga e desliga as mensagens automáticas na hora
+    const short = msg.kind === "text" ? normalizeName(m.text ?? "") : "";
+    const optOut = OPT_OUT_RE.test(short);
+    if (optOut || (OPT_IN_RE.test(short) && this.autoMessagesOff(conv.id))) {
+      store.markProcessed([msg.id]);
+      this.setAutoMessages(conv.id, !optOut, "cliente");
+      const paused = Boolean(updated.aiPausedUntil && updated.aiPausedUntil > this.now());
+      if (s.attendance.autoEnabled && !paused && !this.deps.blockedReason()) {
+        await this.sendAiText(
+          conv.id,
+          optOut
+            ? "Pronto, não te mando mais lembretes nem avisos automáticos. Se precisar de algo, é só chamar por aqui 😊\n\n_Mudou de ideia? Responda *VOLTAR*._"
+            : "Pronto, voltei a te mandar os lembretes e avisos 😊",
+          { countsAsAiReply: false },
+        ).catch(() => undefined);
+      }
+      store.addAiAction(conv.id, { at: this.now(), label: optOut ? "Cliente pediu para não receber mensagens automáticas" : "Cliente reativou as mensagens automáticas", kind: "info" });
+      return;
+    }
 
     // humano em atendimento: só avisa (a pausa do antigo limite diário de respostas não vale mais)
     const oldLimitPause = updated.handoffReason?.startsWith("limite diário de respostas") ?? false;
@@ -811,7 +839,33 @@ export class Engine extends EventEmitter<EngineEvents> {
     const c = this.deps.store.getConversation(conversationId);
     if (!c || c.state === "ignorado" || c.state === "precisa_humano") return false;
     if (c.aiPausedUntil && c.aiPausedUntil > this.now()) return false;
+    if (this.autoMessagesOff(conversationId)) return false;
     return true;
+  }
+
+  // ---------------------------------------------------------------- mensagens automáticas (opt-out)
+  /** O cliente pediu para não receber mais lembretes, avisos de chegada e retomadas de conversa. */
+  autoMessagesOff(conversationId: string): boolean {
+    return Boolean(this.deps.store.getKv(`optout:${conversationId}`));
+  }
+
+  /** Liga/desliga as mensagens automáticas deste cliente (pelo próprio cliente na conversa ou pelo lojista no app). */
+  setAutoMessages(conversationId: string, on: boolean, by: "cliente" | "loja" = "loja"): Conversation {
+    const store = this.deps.store;
+    const was = this.autoMessagesOff(conversationId);
+    store.setKv(`optout:${conversationId}`, on ? null : { at: this.now(), by });
+    if (was === on) {
+      this.addSystemEvent(
+        conversationId,
+        "auto_messages",
+        on
+          ? `Mensagens automáticas reativadas ${by === "cliente" ? "pelo cliente" : "pela loja"}`
+          : `${by === "cliente" ? "Cliente pediu para não receber" : "Loja desligou"} mensagens automáticas (lembretes, avisos e retomadas)`,
+      );
+    }
+    const c = store.getConversation(conversationId)!;
+    this.emit("conversation", c);
+    return c;
   }
 
   addWaitlist(conversationId: string, productId: string, description: string): void {
@@ -856,7 +910,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       if (!checked.get(w.productId) || !this.proactiveAllowed(w.conversationId)) continue;
       await this.sendAiText(
         w.conversationId,
-        `Oi! Passando pra avisar que o *${prettyName(w.description)}* que você queria chegou 😊 Quer que eu separe pra você?`,
+        `Oi! Passando pra avisar que o *${prettyName(w.description)}* que você queria chegou 😊 Quer que eu separe pra você?${OPT_OUT_HINT}`,
         { countsAsAiReply: false },
       );
       store.addAiAction(w.conversationId, { at: this.now(), label: `Avisou que chegou: ${prettyName(w.description)}`, kind: "info" });
@@ -875,19 +929,64 @@ export class Engine extends EventEmitter<EngineEvents> {
       if (r.status !== "created" || r.expiresAt <= this.now() || r.expiresAt - this.now() > before) continue;
       if (this.now() - r.createdAt < 60 * 60_000) continue; // validade curta: não lembra logo depois de reservar
       if (store.getKv(`remind:${r.id}`)) continue;
+      if (!this.proactiveAllowed(r.conversationId)) {
+        store.setKv(`remind:${r.id}`, this.now());
+        continue;
+      }
+      // a reserva ainda vale? confere no ERP na hora (cancelada/excluída/finalizada por lá não recebe lembrete)
+      const state = await this.syncReservation(r).catch(() => "error" as const);
+      if (state === "error") continue; // ERP fora do ar: tenta na próxima rodada, sem lembrar no escuro
+      if (state !== "draft" || store.getReservation(r.id)?.status !== "created") {
+        store.setKv(`remind:${r.id}`, this.now());
+        continue;
+      }
       store.setKv(`remind:${r.id}`, this.now());
-      if (!this.proactiveAllowed(r.conversationId)) continue;
+      // cliente já disse que desistiu e ninguém cancelou: não lembra, avisa a loja
+      if (this.customerGaveUp(r.conversationId, r.createdAt)) {
+        store.addAiAction(r.conversationId, { at: this.now(), label: `Não lembrou da reserva de ${prettyName(r.productDescription)}: o cliente disse que desistiu`, kind: "handoff" });
+        this.handoff(r.conversationId, `cliente disse que desistiu — confira e cancele a reserva de ${prettyName(r.productDescription)}`);
+        continue;
+      }
       const prazo =
         s.reservation.showDeadline !== false
           ? ` até ${new Date(r.expiresAt).toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })}`
           : "";
       await this.sendAiText(
         r.conversationId,
-        `Oi! Passando pra lembrar que o *${prettyName(r.productDescription)}* está separado pra você${prazo}. Consegue passar pra buscar? 😊`,
+        `Oi! Passando pra lembrar que o *${prettyName(r.productDescription)}* está separado pra você${prazo}. Consegue passar pra buscar? 😊${OPT_OUT_HINT}`,
         { countsAsAiReply: false },
       );
       store.addAiAction(r.conversationId, { at: this.now(), label: "Lembrou o cliente da reserva", kind: "info" });
     }
+  }
+
+  /** Situação atual das reservas desta conversa, para a IA não falar de reserva que já foi cancelada. */
+  private reservationContext(conversationId: string): { active: string[]; closed: string[] } {
+    const label = (r: Reservation) =>
+      `${r.quantity}× ${prettyName(r.productDescription)}${r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : ""}`;
+    const CLOSED: Record<string, string> = {
+      cancelled: "cancelada",
+      removed: "cancelada no sistema da loja",
+      expired: "venceu",
+      rejected: "não aprovada pela loja",
+      completed: "já comprada",
+    };
+    const mine = this.deps.store
+      .listReservations(300)
+      .filter((r) => r.conversationId === conversationId && this.now() - r.createdAt < 14 * 86_400_000);
+    return {
+      active: mine
+        .filter((r) => r.status === "created" || r.status === "pending_approval")
+        .map((r) => `${label(r)} — ${r.status === "created" ? "separada" : "aguardando a loja aprovar"}`),
+      closed: mine.filter((r) => CLOSED[r.status]).map((r) => `${label(r)} — ${CLOSED[r.status]}`),
+    };
+  }
+
+  /** Mensagem do cliente depois de `since` dizendo que não quer mais o que pediu para separar. */
+  private customerGaveUp(conversationId: string, since: number): boolean {
+    return this.deps.store
+      .listMessages(conversationId, 60)
+      .some((m) => m.origin === "consumidor" && m.createdAt >= since && GAVE_UP_RE.test(normalizeName(m.text ?? "")));
   }
 
   private async followUps(): Promise<void> {
@@ -1160,6 +1259,8 @@ export class Engine extends EventEmitter<EngineEvents> {
       customerNotes: this.getCustomerNotes(conversationId),
       catalogSummary: await this.catalog.get(),
       nicknames: listNicknames(store),
+      reservations: this.reservationContext(conversationId),
+      autoMessagesOff: this.autoMessagesOff(conversationId),
     });
     const messages: AiMessage[] = [{ role: "system", content: system }, ...this.buildHistory(conversationId)];
     if (triage) messages.push({ role: "system", content: triageInstruction(triage) });
@@ -1205,6 +1306,7 @@ export class Engine extends EventEmitter<EngineEvents> {
                 .listReservations(300)
                 .filter((r) => r.conversationId === conversationId && ["pending_approval", "created", "failed"].includes(r.status)),
             cancelReservation: (id) => this.cancelReservation(id, "cliente"),
+            setAutoMessages: (on) => !readOnly && this.setAutoMessages(conversationId, on, "cliente"),
           }, state);
         } catch (e) {
           console.error(`[ferramenta ${call.function.name}]`, (e as Error).message);
@@ -1769,23 +1871,32 @@ export class Engine extends EventEmitter<EngineEvents> {
    * excluído ou cancelado por lá vira "Removida".
    */
   async syncReservationsWithErp(): Promise<void> {
-    const store = this.deps.store;
-    for (const r of store.listReservations(300)) {
+    for (const r of this.deps.store.listReservations(300)) {
       if (r.status !== "created" || !r.saleId) continue;
       try {
-        const { state, orderNumber } = await this.deps.nive.getSaleState(r.saleId);
-        if (orderNumber && orderNumber !== r.orderNumber) this.emit("reservation", store.updateReservation(r.id, { orderNumber }));
-        if (state === "completed") {
-          this.emit("reservation", store.updateReservation(r.id, { status: "completed" }));
-          this.addSystemEvent(r.conversationId, "reservation_created", `Venda da reserva finalizada no sistema${orderNumber ? ` · pedido #${orderNumber}` : ""}`);
-        } else if (state === "cancelled" || state === "not_found") {
-          this.emit("reservation", store.updateReservation(r.id, { status: "removed" }));
-          this.addSystemEvent(r.conversationId, "reservation_expired", `Rascunho da reserva ${state === "not_found" ? "excluído" : "cancelado"} no sistema`);
-        }
+        await this.syncReservation(r);
       } catch {
         // ERP fora do ar: confere de novo depois
       }
     }
+  }
+
+  /** Confere uma reserva separada no ERP e atualiza a situação dela aqui. Devolve o estado do rascunho. */
+  private async syncReservation(r: Reservation): Promise<"draft" | "completed" | "cancelled" | "not_found"> {
+    if (!r.saleId) return "draft";
+    const store = this.deps.store;
+    const { state, orderNumber } = await this.deps.nive.getSaleState(r.saleId);
+    const current = store.getReservation(r.id);
+    if (!current || current.status !== "created") return state;
+    if (orderNumber && orderNumber !== current.orderNumber) this.emit("reservation", store.updateReservation(r.id, { orderNumber }));
+    if (state === "completed") {
+      this.emit("reservation", store.updateReservation(r.id, { status: "completed" }));
+      this.addSystemEvent(r.conversationId, "reservation_created", `Venda da reserva finalizada no sistema${orderNumber ? ` · pedido #${orderNumber}` : ""}`);
+    } else if (state === "cancelled" || state === "not_found") {
+      this.emit("reservation", store.updateReservation(r.id, { status: "removed" }));
+      this.addSystemEvent(r.conversationId, "reservation_expired", `Rascunho da reserva ${state === "not_found" ? "excluído" : "cancelado"} no sistema`);
+    }
+    return state;
   }
 
   /**
