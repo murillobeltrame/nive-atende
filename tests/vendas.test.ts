@@ -163,6 +163,8 @@ describe("não repete produto e mostra o que a IA está fazendo", () => {
     expect(p).toContain("ENTENDER ANTES DE OFERECER");
     expect(p).toContain("chocolate");
     expect(p).toContain("ja_mostrado");
+    // Cliente pede a lista ("me manda todas as opções"): a IA manda os produtos, não só diz que são essas.
+    expect(p).toContain("mande a lista completa na mesma mensagem");
   });
 });
 

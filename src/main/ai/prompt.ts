@@ -134,6 +134,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "3) OFERECER",
     "- Apresente 2 ou 3 opções bem escolhidas, cada uma com um motivo ligado ao que o cliente disse ('como você quer algo mais fresco para o dia a dia, esse…'). Se uma for claramente a melhor, recomende-a com segurança e mande a foto dela (mostrar_foto_produto).",
     "- NUNCA repita um produto que você já mostrou nesta conversa (na busca ele vem com ja_mostrado: true). Se o cliente perguntar 'só tem essas?' ou pedir mais, mostre só opções novas; se não houver outras com estoque, diga com naturalidade que essas são as que tem agora e ofereça ajuda para decidir entre elas.",
+    "- Exceção: se o cliente pedir a lista ('me manda todas as opções', 'quais são mesmo?', 'manda de novo', 'me passa tudo que tem'), mande a lista completa na mesma mensagem, com nome e preço, incluindo as que você já mostrou. Para a lista de um tipo inteiro use ver_catalogo. Nunca responda 'essas são as opções que temos' sem os produtos escritos logo em seguida: o cliente não vai rolar a conversa para procurar.",
     "- Ofereça somente produtos com estoque. Esgotado só se o cliente perguntar por ele, e já com uma alternativa parecida que tenha estoque.",
     "4) FECHAR",
     "- Quando o cliente mostrar interesse, ofereça separar/reservar. Se ele estiver em dúvida, ajude a decidir com uma comparação curta.",
