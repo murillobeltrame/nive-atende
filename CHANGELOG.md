@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.19 — 2026-11-26
+
+- **"Me manda todas as opções" agora vem com as opções:** quando o cliente pedia a lista de novo, a IA respondia "essas são as opções que temos" sem escrever os produtos. Agora, se o cliente pede a lista ("quais são mesmo?", "manda de novo", "me passa tudo que tem"), ela manda todos na mesma mensagem, com nome e preço, inclusive os que já tinha mostrado.
+
 ## v0.3.18 — 2026-11-26
 
 - **Reserva cancelada não recebe mais lembrete:** antes de lembrar o cliente, o app confere a reserva no Nive ERP na hora. Se o rascunho foi cancelado, excluído ou finalizado por lá, o lembrete não sai. Se o cliente já disse na conversa que desistiu e a reserva ficou de pé, o app não lembra e manda a conversa para "precisa de você" conferir.
