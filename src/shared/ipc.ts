@@ -1,5 +1,6 @@
 // Contrato de IPC: a interface só fala com o processo principal por esta API (window.niveAtende).
 import type {
+  ActionAlarm,
   AiProviderId,
   AppInfo,
   AppSettings,
@@ -135,6 +136,10 @@ export interface NiveAtendeApi {
   onTyping(cb: (t: { conversationId: string; state: "composing" | "recording" | null }) => void): () => void;
   onConversationDeleted(cb: (conversationId: string) => void): () => void;
   onUpdate(cb: (u: UpdateState) => void): () => void;
+  /** Avisos que tocam na tela (nenhuma tela do Nive ERP mostrou). Lista vazia = parar. */
+  onAlarm(cb: (alarms: ActionAlarm[]) => void): () => void;
+  /** "Vou ver": para de tocar aqui (o aviso continua aberto no ERP). */
+  dismissAlarm(refs: string[]): Promise<void>;
 }
 
 /** Nomes dos canais de eventos (main → renderer). */
@@ -150,11 +155,13 @@ export const EVENTS = {
   typing: "evt:typing",
   conversationDeleted: "evt:conversationDeleted",
   update: "evt:update",
+  alarm: "evt:alarm",
 } as const;
 
 /** Métodos invocáveis (renderer → main). O canal é "rpc:<método>". */
 export const RPC_METHODS = [
   "getSettings",
+  "dismissAlarm",
   "saveSettings",
   "setSecret",
   "clearSecret",

@@ -367,3 +367,14 @@ export type NavigateTarget =
   | { page: "pendencias" }
   | { page: "ajustes"; section?: string }
   | { page: "status" };
+
+/** Aviso "aguardando ação" que toca na tela do Nive Atende quando nenhuma tela do Nive ERP mostrou. */
+export interface ActionAlarm {
+  ref: string;
+  kind: "handoff" | "reservation";
+  conversationId: string;
+  title: string;
+  message: string;
+  /** O Nive ERP não respondeu (ou é uma versão sem os avisos). */
+  erpOffline?: boolean;
+}

@@ -2,6 +2,7 @@
 // Parâmetros de URL úteis: ?status=ok|warn|error  ?terms=0 (mostra o termo)  ?setup=1 (sem chaves)
 import type { NiveAtendeApi, OutgoingMedia } from "../../../shared/ipc";
 import type {
+  ActionAlarm,
   AppSettings,
   AuditEntry,
   ChatMessage,
@@ -478,6 +479,7 @@ export function createMockApi(): NiveAtendeApi {
     conversationDeleted: emitter<string>(),
     update: emitter<UpdateState>(),
     sim: emitter<{ message?: ChatMessage; activity?: string | null }>(),
+    alarm: emitter<ActionAlarm[]>(),
   };
 
   const touch = (c: Conversation, m: ChatMessage) => {
@@ -849,6 +851,23 @@ export function createMockApi(): NiveAtendeApi {
     onTyping: (cb) => ev.typing.on(cb),
     onConversationDeleted: (cb) => ev.conversationDeleted.on(cb),
     onUpdate: (cb) => ev.update.on(cb),
+    // ?alarm=1 mostra o aviso que toca na tela (nenhuma tela do ERP mostrou)
+    onAlarm: (cb) => {
+      const off = ev.alarm.on(cb);
+      if (params.get("alarm") === "1")
+        setTimeout(
+          () =>
+            ev.alarm.emit([
+              { ref: "res:1", kind: "reservation", conversationId: "c1", title: "Reserva pelo WhatsApp para aceitar", message: "Jordana Padilha da Silva · 1× Busca Brisa 1L · rascunho #214. Finalize na retirada ou exclua o rascunho." },
+              { ref: "conv:2", kind: "handoff", conversationId: "c2", title: "Cliente aguardando alguém da loja", message: "Dilnei Morais · Cliente pergunta se há entrega hoje" },
+            ]),
+          300,
+        );
+      return off;
+    },
+    async dismissAlarm() {
+      ev.alarm.emit([]);
+    },
   };
   return api;
 }

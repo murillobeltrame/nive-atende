@@ -120,6 +120,28 @@ export interface NiveApi {
    * horário certo, medido pelo cabeçalho Date das respostas da API. null enquanto não houve resposta.
    */
   clockOffsetMs?(): number | null;
+  /** Abre/atualiza aviso "aguardando ação" no ERP; false quando o ERP ainda não tem os avisos. */
+  upsertActionAlert?(input: ActionAlertInput): Promise<boolean>;
+  resolveActionAlert?(source: string, externalRef: string): Promise<void>;
+  /** Situação dos avisos no ERP; null quando o ERP ainda não tem os avisos. */
+  getActionAlerts?(source: string, refs: string[]): Promise<ActionAlertState[] | null>;
+}
+
+export interface ActionAlertInput {
+  source: string;
+  externalRef: string;
+  kind: "handoff" | "reservation" | "other";
+  title: string;
+  message: string;
+  linkUrl?: string | null;
+  saleId?: string | null;
+}
+
+export interface ActionAlertState {
+  externalRef: string;
+  status: string;
+  shownAt: string | null;
+  acknowledgedAt: string | null;
 }
 
 /** Normaliza nome para comparar: sem acentos, minúsculo, espaços simples. */
@@ -472,6 +494,43 @@ export class NiveClient implements NiveApi {
     if (state !== "draft") return "not_draft";
     await this.request("POST", `/sales/${encodeURIComponent(saleId)}/cancel-draft`, { reason: reason.slice(0, 500) });
     return "cancelled";
+  }
+
+  async upsertActionAlert(input: ActionAlertInput): Promise<boolean> {
+    try {
+      await this.request("POST", "/integrations/action-alerts", input);
+      return true;
+    } catch (e) {
+      if (e instanceof NiveApiError && e.status === 404) return false;
+      throw e;
+    }
+  }
+
+  async resolveActionAlert(source: string, externalRef: string): Promise<void> {
+    try {
+      await this.request("POST", "/integrations/action-alerts/resolve", { source, externalRef });
+    } catch (e) {
+      if (e instanceof NiveApiError && e.status === 404) return;
+      throw e;
+    }
+  }
+
+  async getActionAlerts(source: string, refs: string[]): Promise<ActionAlertState[] | null> {
+    try {
+      const out = await this.request<{ items?: Json[] }>(
+        "GET",
+        `/integrations/action-alerts?source=${encodeURIComponent(source)}&refs=${encodeURIComponent(refs.slice(0, 100).join(","))}`,
+      );
+      return (out.items ?? []).map((i) => ({
+        externalRef: String(i.externalRef ?? ""),
+        status: String(i.status ?? ""),
+        shownAt: s(i.shownAt),
+        acknowledgedAt: s(i.acknowledgedAt),
+      }));
+    } catch (e) {
+      if (e instanceof NiveApiError && e.status === 404) return null;
+      throw e;
+    }
   }
 
   async createDraftSale(input: {

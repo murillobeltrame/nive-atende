@@ -1,4 +1,5 @@
 // Processo principal do Electron: janela, ícone na bandeja, IPC e ligação entre os serviços.
+import { ActionAlertSync } from "./action-alerts";
 import { Simulator } from "./simulator";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, shell, Tray } from "electron";
 import { randomBytes } from "node:crypto";
@@ -347,10 +348,41 @@ engine.on("conversationDeleted", (id) => {
 engine.on("conversation", (c) => {
   send(EVENTS.conversation, c);
   refreshTray();
+  void actionAlerts.sync();
 });
 engine.on("reservation", (r) => {
   send(EVENTS.reservation, r);
   refreshTray();
+  void actionAlerts.sync();
+});
+
+// ------------------------------------------------------------------ avisos "aguardando ação"
+// Vão para o Nive ERP (janela que toca, sino, Nive Mobile). Se nenhuma tela do ERP mostrou em 1 min,
+// tocam aqui: a janela vem para a frente e fica por cima até alguém clicar.
+let alarmRefs = "";
+const actionAlerts = new ActionAlertSync({
+  store,
+  nive,
+  now: () => Date.now(),
+  log: (level, msg, err) => log("app", level, msg, err),
+  onAlarm: (alarms) => {
+    send(EVENTS.alarm, alarms);
+    const refs = alarms.map((a) => a.ref).join(",");
+    if (refs === alarmRefs) return;
+    const fresh = alarms.some((a) => !alarmRefs.split(",").includes(a.ref));
+    alarmRefs = refs;
+    if (!win || win.isDestroyed()) return;
+    if (alarms.length && fresh) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.setAlwaysOnTop(true, "floating");
+      win.flashFrame(true);
+      win.focus();
+    } else if (!alarms.length) {
+      win.setAlwaysOnTop(false);
+      win.flashFrame(false);
+    }
+  },
 });
 engine.on("aiError", (e: AiError) => monitor.reportAiError(e));
 engine.on("aiOk", () => monitor.reportAiOk());
@@ -744,6 +776,7 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   getUpdateState: async () => updater.state(),
   checkForUpdate: () => updater.check(),
   installUpdate: async () => updater.install(),
+  dismissAlarm: async (refs: string[]) => actionAlerts.dismiss(Array.isArray(refs) ? refs.map(String).slice(0, 50) : []),
 };
 
 for (const [method, fn] of Object.entries(handlers)) {
@@ -839,6 +872,9 @@ void app.whenReady().then(async () => {
   setTimeout(sendDailySummaryIfDue, 60_000);
   // rascunhos finalizados/excluídos no ERP
   setTimeout(syncReservations, 20_000);
+  // avisos "aguardando ação" no Nive ERP (e o toque aqui quando ninguém viu lá)
+  setTimeout(() => void actionAlerts.sync(), 15_000);
+  setInterval(() => void actionAlerts.sync(), 20_000);
   setInterval(syncReservations, 2 * 60_000);
   // versão nova nas Releases do GitHub: confere ao abrir e a cada 4 horas
   setTimeout(() => void updater.check(), 20_000);

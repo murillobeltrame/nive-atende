@@ -25,6 +25,7 @@ const api = {
   onTyping: (cb) => subscribe(EVENTS.typing, cb),
   onConversationDeleted: (cb) => subscribe(EVENTS.conversationDeleted, cb),
   onUpdate: (cb) => subscribe(EVENTS.update, cb),
+  onAlarm: (cb) => subscribe(EVENTS.alarm, cb),
 } as NiveAtendeApi;
 
 contextBridge.exposeInMainWorld("niveAtende", api);

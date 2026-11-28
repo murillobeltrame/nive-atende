@@ -2362,3 +2362,80 @@ td .sub {
 .location-card .map-preview {
   margin-top: 4px;
 }
+
+/* Aviso "aguardando ação" que toca quando nenhuma tela do Nive ERP mostrou */
+.alarm-backdrop {
+  z-index: 80;
+}
+.alarm {
+  max-width: 460px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid #f59e0b;
+}
+.alarm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f59e0b;
+  color: #3b2300;
+  padding: 12px 18px;
+}
+.alarm-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.alarm-head svg {
+  animation: alarm-shake 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .alarm-head svg {
+    animation: none;
+  }
+}
+@keyframes alarm-shake {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-14deg); }
+  40% { transform: rotate(12deg); }
+  60% { transform: rotate(-8deg); }
+}
+.alarm-sub {
+  margin: 10px 18px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.alarm-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow: auto;
+}
+.alarm-list li {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+.alarm-icon {
+  color: #b45309;
+  padding-top: 2px;
+}
+.alarm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.alarm-body span {
+  color: var(--muted);
+}
+.alarm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.alarm-all {
+  margin: 4px 18px 14px;
+}

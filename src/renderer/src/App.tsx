@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSettings, ConversationFilter, NavigateTarget, StatusActionKind, StatusSnapshot } from "../../shared/types";
+import { AlarmOverlay } from "./components/AlarmOverlay";
 import { QrModal } from "./components/QrModal";
 import { type Page, Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -139,6 +140,11 @@ export function App() {
       {isMock && <div className="mock-banner">Modo de demonstração: dados de exemplo, nada é enviado.</div>}
       <StatusBar status={status} onAction={onAction} onToggleAuto={toggleAuto} busy={busyAction} />
       <UpdateBanner />
+      <AlarmOverlay
+        onOpenConversation={(conversationId, kind) =>
+          kind === "reservation" ? setPage("reservas") : navigate({ page: "conversas", conversationId })
+        }
+      />
       <div className="app-body">
         <Sidebar
           page={page}
