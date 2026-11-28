@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## v0.3.20 — 2026-11-28
+
+- **Reserva aceita no Nive ERP:** o pedido de reserva não espera mais aprovação aqui no programa. Ele entra direto no sistema como venda em rascunho, com a conversa do WhatsApp na observação (no ERP, o ícone de balão ao lado do selo "Nive Atende" mostra a conversa sem abrir o rascunho). Para aceitar, é só deixar o rascunho e finalizar quando o cliente buscar; para recusar, exclua ou cancele o rascunho.
+- **Cliente avisado quando a loja não mantém a reserva:** se o rascunho for excluído ou cancelado no sistema (ou a reserva for recusada aqui), a IA avisa o cliente na hora e oferece outra opção. Antes ele ficava esperando uma confirmação que não vinha.
+- **"A última unidade acabou agora" quando não acabou:** o pedido do próprio cliente fazia o produto aparecer esgotado para ele. Agora a IA sabe que aquela unidade já está no pedido dele.
+- **Data certa do fim da promoção:** promoção que termina em 30/11 às 23:59 aparecia como "vale até 01/12". Agora a data segue o horário de Brasília.
+- **Formas de pagamento para o cliente:** permuta, vale-troca e outras formas de uso interno não são mais oferecidas no WhatsApp, e o que você escreve em "Sobre a loja" (ex.: "nunca dar opção parcelado") vale acima da lista do sistema.
+
 ## v0.3.19 — 2026-11-26
 
 - **"Me manda todas as opções" agora vem com as opções:** quando o cliente pedia a lista de novo, a IA respondia "essas são as opções que temos" sem escrever os produtos. Agora, se o cliente pede a lista ("quais são mesmo?", "manda de novo", "me passa tudo que tem"), ela manda todos na mesma mensagem, com nome e preço, inclusive os que já tinha mostrado.
