@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.3.22 — 2026-11-28
+
+- **Aviso de "aguardando ação" no Nive ERP:** quando um cliente fica esperando alguém da loja ou entra uma reserva pelo WhatsApp, aparece uma janela no canto do Nive ERP que toca até alguém clicar em Abrir ou Resolvido. O aviso também vai para o sino do ERP e para o celular de quem usa o Nive Mobile. A reserva sai sozinha da lista quando o rascunho é finalizado ou excluído, e a conversa quando alguém responde o cliente.
+- **Ninguém com o ERP aberto? O aviso toca aqui:** se em 1 minuto nenhuma tela do Nive ERP mostrou o aviso (ou o ERP não respondeu), o Nive Atende vem para a frente e toca até alguém clicar em "Vou ver" ou abrir a conversa.
+
 ## v0.3.21 — 2026-11-28
 
 - **Conversa da reserva fácil de ler no Nive ERP:** a conversa do WhatsApp vai na observação do rascunho com um identificador do Nive Atende. No ERP ela aparece como chat (cliente de um lado, atendimento do outro, com o horário), no balão da lista de rascunhos e no detalhe da venda. Impressa ou vista fora do ERP, continua legível como texto.
