@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## v0.3.23 — 2026-11-28
+
+- **Conversas também pelo Nive ERP:** em Vendas → Conversas do WhatsApp, no ERP, dá para ler todas as conversas do Nive Atende no jeito do WhatsApp e responder, assumir ou devolver para a IA, de qualquer computador ou do celular. As conversas continuam só aqui no computador da loja: o ERP pede e o Nive Atende mostra na hora. Fotos e áudios carregam quando você clica. Para funcionar, o Nive Atende precisa estar aberto e com internet.
+- **O aviso de cliente aguardando abre a conversa:** no Nive ERP, o botão Abrir do aviso "Cliente aguardando alguém da loja" leva direto para a conversa.
+
 ## v0.3.22 — 2026-11-28
 
 - **Aviso de "aguardando ação" no Nive ERP:** quando um cliente fica esperando alguém da loja ou entra uma reserva pelo WhatsApp, aparece uma janela no canto do Nive ERP que toca até alguém clicar em Abrir ou Resolvido. O aviso também vai para o sino do ERP e para o celular de quem usa o Nive Mobile. A reserva sai sozinha da lista quando o rascunho é finalizado ou excluído, e a conversa quando alguém responde o cliente.
