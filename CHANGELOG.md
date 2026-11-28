@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## v0.3.21 — 2026-11-28
+
+- **Conversa da reserva fácil de ler no Nive ERP:** a conversa do WhatsApp vai na observação do rascunho com um identificador do Nive Atende. No ERP ela aparece como chat (cliente de um lado, atendimento do outro, com o horário), no balão da lista de rascunhos e no detalhe da venda. Impressa ou vista fora do ERP, continua legível como texto.
+
 ## v0.3.20 — 2026-11-28
 
 - **Reserva aceita no Nive ERP:** o pedido de reserva não espera mais aprovação aqui no programa. Ele entra direto no sistema como venda em rascunho, com a conversa do WhatsApp na observação (no ERP, o ícone de balão ao lado do selo "Nive Atende" mostra a conversa sem abrir o rascunho). Para aceitar, é só deixar o rascunho e finalizar quando o cliente buscar; para recusar, exclua ou cancele o rascunho.
