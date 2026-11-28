@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## v0.4.0 — 2026-11-28
+
+- **Conversas com cara de WhatsApp:** as mensagens agora aparecem em bolhas com ponta, agrupadas quando são da mesma pessoa, com a hora e os tiques dentro da bolha e o papel de parede ao fundo. No topo da bolha aparece quem respondeu: a IA (azul), você ou "Pelo celular" (verde).
+- **Foto do contato:** quem tem foto de perfil no WhatsApp aparece com a foto; quem não tem aparece com o bonequinho cinza do WhatsApp, no lugar das iniciais coloridas.
+- **Lista de conversas mais limpa:** busca arredondada com botão de limpar, filtros com ícone e contador, e a hora em verde quando tem mensagem não lida.
+- **Dados do cliente que abrem e fecham:** o painel da direita ficou no formato de "dados do contato", com a foto grande, e abre ou fecha pelo botão ⓘ no topo da conversa. Em janela pequena ele começa fechado.
+- **Caixa de digitação nova:** campo arredondado com a "Sugestão da IA" dentro dele e botão redondo para enviar ou gravar áudio. Rolou a conversa para cima? Aparece um botão para voltar à última mensagem.
+- **Apagar para todos:** virou uma lixeira que aparece ao passar o mouse sobre a mensagem enviada.
+- **Todas as telas padronizadas:** Pendências, Reservas, Testar IA, Consumo e Ajustes ganharam ícones nos títulos, botões e situações, com espaçamentos e tamanhos iguais em todo o programa.
+
 ## v0.3.23 — 2026-11-28
 
 - **Conversas também pelo Nive ERP:** em Vendas → Conversas do WhatsApp, no ERP, dá para ler todas as conversas do Nive Atende no jeito do WhatsApp e responder, assumir ou devolver para a IA, de qualquer computador ou do celular. As conversas continuam só aqui no computador da loja: o ERP pede e o Nive Atende mostra na hora. Fotos e áudios carregam quando você clica. Para funcionar, o Nive Atende precisa estar aberto e com internet.
