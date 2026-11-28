@@ -219,3 +219,85 @@ export const IconTrash = (p: P) => (
     <path d="M10 11v6M14 11v6" />
   </Svg>
 );
+
+export const IconCheckCheck = (p: P) => (
+  <Svg {...p}>
+    <path d="M2 12.5l4.5 4.5L16 7" />
+    <path d="M12 16l1 1L22.5 7" />
+  </Svg>
+);
+export const IconChevronDown = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 9l6 6 6-6" />
+  </Svg>
+);
+export const IconInfo = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 7.5v.5" />
+  </Svg>
+);
+export const IconBan = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M5.7 5.7l12.6 12.6" />
+  </Svg>
+);
+export const IconRefresh = (p: P) => (
+  <Svg {...p}>
+    <path d="M20 11a8 8 0 0 0-14.3-4.3L4 9" />
+    <path d="M4 4v5h5" />
+    <path d="M4 13a8 8 0 0 0 14.3 4.3L20 15" />
+    <path d="M20 20v-5h-5" />
+  </Svg>
+);
+export const IconPlug = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 3v5M15 3v5" />
+    <path d="M6 8h12v3a6 6 0 0 1-12 0z" />
+    <path d="M12 17v4" />
+  </Svg>
+);
+export const IconCalendar = (p: P) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
+  </Svg>
+);
+export const IconWallet = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18v3" />
+    <path d="M3 7.5V17a2.5 2.5 0 0 0 2.5 2.5H20a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H5.5A2.5 2.5 0 0 1 3 7.5z" />
+    <path d="M16.5 13.5h.5" />
+  </Svg>
+);
+export const IconSmile = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5v.5M15 9.5v.5" />
+  </Svg>
+);
+export const IconTagLabel = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 12V4h8l10 10-8 8z" />
+    <circle cx="7.5" cy="8.5" r="1.2" />
+  </Svg>
+);
+export const IconMonitor = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="12.5" rx="2" />
+    <path d="M8.5 20.5h7M12 16.5v4" />
+  </Svg>
+);
+export const IconDownload = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
+  </Svg>
+);
+/** Silhueta do avatar padrão do WhatsApp (contato sem foto). */
+export const IconPersonFill = ({ size = 24, className }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    <circle cx="12" cy="9.2" r="4.4" />
+    <path d="M12 15.2c-5 0-8.6 2.7-8.6 6.3V24h17.2v-2.5c0-3.6-3.600-6.3-8.6-6.3z" />
+  </svg>
+);

@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { IconAlert, IconBag, IconBan, IconChat, IconCheck, IconCheckCheck, IconClock, IconTrash, IconX } from "../components/Icons";
+import { EmptyState, PageTitle } from "../components/PageTitle";
 import type { Reservation, ReservationStatus } from "../../../shared/types";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
@@ -6,15 +8,15 @@ import { prettyName } from "../../../shared/format";
 import { approveLabel, customerInfo } from "../lib/reservation";
 import { type Choice, CustomerChoice, needsChoice } from "../components/CustomerChoice";
 
-const STATUS: Record<ReservationStatus, { label: string; cls: string }> = {
-  pending_approval: { label: "Aguardando aprovação", cls: "tag-warn" },
-  created: { label: "Rascunho criado", cls: "tag-ok" },
-  failed: { label: "Falhou", cls: "tag-fail" },
-  rejected: { label: "Recusada", cls: "tag-ignored" },
-  expired: { label: "Vencida", cls: "tag-ignored" },
-  completed: { label: "Finalizada", cls: "tag-ok" },
-  removed: { label: "Removida", cls: "tag-ignored" },
-  cancelled: { label: "Cancelada", cls: "tag-ignored" },
+const STATUS: Record<ReservationStatus, { label: string; cls: string; icon: ReactNode }> = {
+  pending_approval: { label: "Aguardando aprovação", cls: "tag-warn", icon: <IconClock size={11} /> },
+  created: { label: "Rascunho criado", cls: "tag-ok", icon: <IconCheck size={11} /> },
+  failed: { label: "Falhou", cls: "tag-fail", icon: <IconAlert size={11} /> },
+  rejected: { label: "Recusada", cls: "tag-ignored", icon: <IconBan size={11} /> },
+  expired: { label: "Vencida", cls: "tag-ignored", icon: <IconClock size={11} /> },
+  completed: { label: "Finalizada", cls: "tag-ok", icon: <IconCheckCheck size={12} /> },
+  removed: { label: "Removida", cls: "tag-ignored", icon: <IconTrash size={11} /> },
+  cancelled: { label: "Cancelada", cls: "tag-ignored", icon: <IconX size={11} /> },
 };
 
 function dt(ts: number) {
@@ -57,22 +59,22 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
   return (
     <div className="page">
       <div className="page-pad">
-        <h1 className="page-title">Reservas</h1>
+        <PageTitle icon={<IconBag size={20} />}>Reservas</PageTitle>
         <p className="page-sub">
           Produtos que clientes pediram para separar pelo WhatsApp. Cada reserva vira uma venda em rascunho no
           sistema Nive, com a conversa na observação. Se você excluir ou cancelar o rascunho por lá, o cliente é avisado. Se a venda não for finalizada até o fim da validade, o rascunho é cancelado e as peças voltam ao
           estoque.
         </p>
         {error && (
-          <div className="callout danger" role="alert" style={{ marginBottom: 12 }}>
+          <div className="callout danger" role="alert">
+            <IconAlert size={16} />
             {error}
           </div>
         )}
         {items.length === 0 ? (
-          <div className="card empty">
-            <strong>Nenhuma reserva ainda.</strong>
-            <span>As reservas aparecem aqui quando um cliente pede para separar um produto pelo WhatsApp.</span>
-          </div>
+          <EmptyState icon={<IconBag size={22} />} title="Nenhuma reserva ainda.">
+            As reservas aparecem aqui quando um cliente pede para separar um produto pelo WhatsApp.
+          </EmptyState>
         ) : (
           <div className="table-wrap">
             <table>
@@ -92,7 +94,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                 {items.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <div>{r.customerName}</div>
+                      <div className="cell-strong">{r.customerName}</div>
                       {customerInfo(r) && <div className={`sub cust-${customerInfo(r)!.tone}`}>{customerInfo(r)!.text}</div>}
                       {(r.status === "pending_approval" || r.status === "failed") && (
                         <CustomerChoice r={r} value={choices[r.id]} onChange={(c) => setChoices((p) => ({ ...p, [r.id]: c }))} />
@@ -105,9 +107,12 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                       </div>
                       {r.variantLabel !== "Único" && <div className="sub">{r.variantLabel}</div>}
                     </td>
-                    <td>{money(r.unitPrice * r.quantity)}</td>
+                    <td className="cell-num">{money(r.unitPrice * r.quantity)}</td>
                     <td>
-                      <span className={`tag ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
+                      <span className={`tag ${STATUS[r.status].cls}`}>
+                        {STATUS[r.status].icon}
+                        {STATUS[r.status].label}
+                      </span>
                       {r.status === "created" && (
                         <div className="sub" style={{ marginTop: 4 }}>
                           {r.orderNumber ? `Pedido #${r.orderNumber}` : "Rascunho no sistema Nive"}
@@ -129,6 +134,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                     <td>
                       <div className="btn-row" style={{ justifyContent: "flex-end" }}>
                         <button className="btn sm" onClick={() => onOpenConversation(r.conversationId)}>
+                          <IconChat size={14} />
                           Conversa
                         </button>
                         {r.status === "created" &&
@@ -150,6 +156,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                             </>
                           ) : (
                             <button className="btn sm danger" disabled={busy === r.id} onClick={() => setConfirmCancel(r.id)}>
+                              <IconX size={14} />
                               Cancelar reserva
                             </button>
                           ))}
@@ -160,6 +167,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                               disabled={busy === r.id}
                               onClick={() => act(r.id, api.rejectReservation)}
                             >
+                              <IconX size={14} />
                               Recusar
                             </button>
                             <button
@@ -167,6 +175,7 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
                               disabled={busy === r.id || needsChoice(r, choices[r.id])}
                               onClick={() => act(r.id, (id) => api.approveReservation(id, choices[r.id]))}
                             >
+                              <IconCheck size={14} />
                               {approveLabel(r)}
                             </button>
                           </>

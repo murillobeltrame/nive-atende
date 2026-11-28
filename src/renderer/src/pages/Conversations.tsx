@@ -1,12 +1,31 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings, ChatMessage, Conversation, ConversationFilter } from "../../../shared/types";
 import { aiConfigured } from "../../../shared/ai-catalog";
 import { Composer } from "../components/Composer";
-import { IconAlert, IconBell, IconBellOff, IconCheck, IconPencil, IconSearch, IconShield, IconSpark, IconTrash, IconUser, IconX } from "../components/Icons";
-import { MessageBubble } from "../components/MessageBubble";
+import {
+  IconAlert,
+  IconBell,
+  IconBellOff,
+  IconChart,
+  IconChat,
+  IconCheck,
+  IconCheckCheck,
+  IconChevronDown,
+  IconInfo,
+  IconPencil,
+  IconPersonFill,
+  IconPhone,
+  IconSearch,
+  IconShield,
+  IconSpark,
+  IconTrash,
+  IconUser,
+  IconX,
+} from "../components/Icons";
+import { MessageBubble, groupKey } from "../components/MessageBubble";
 import { StateTag } from "../components/Tag";
 import { api } from "../lib/api";
-import { auxLine, avatarColors, conversationName, formatPhone, initials, listTime, previewPrefix, usd } from "../lib/format";
+import { auxLine, conversationName, formatPhone, listTime, usd } from "../lib/format";
 
 interface Props {
   filter: ConversationFilter;
@@ -21,6 +40,7 @@ interface Props {
 }
 
 const avatarCache = new Map<string, string | null>();
+const PANEL_KEY = "nive-atende:painel-cliente";
 
 type TypingState = "composing" | "recording";
 
@@ -64,9 +84,8 @@ function useTyping(): Record<string, TypingState> {
 
 const typingLabel = (s: TypingState) => (s === "recording" ? "gravando áudio…" : "digitando…");
 
-/** Foto de perfil pública do contato; sem foto, as iniciais. */
-function Avatar({ name, seed, small, conversationId }: { name: string; seed: string; small?: boolean; conversationId?: string }) {
-  const [bg, fg] = avatarColors(seed);
+/** Foto de perfil do contato no WhatsApp; sem foto, a silhueta cinza padrão do WhatsApp. */
+function Avatar({ conversationId, size }: { conversationId?: string; size?: "sm" | "lg" }) {
   const [photo, setPhoto] = useState<string | null>(conversationId ? (avatarCache.get(conversationId) ?? null) : null);
   useEffect(() => {
     if (!conversationId) return;
@@ -74,6 +93,7 @@ function Avatar({ name, seed, small, conversationId }: { name: string; seed: str
       setPhoto(avatarCache.get(conversationId) ?? null);
       return;
     }
+    setPhoto(null);
     let alive = true;
     void api
       .getAvatar(conversationId)
@@ -86,13 +106,22 @@ function Avatar({ name, seed, small, conversationId }: { name: string; seed: str
       alive = false;
     };
   }, [conversationId]);
-  if (photo)
-    return <img className={`avatar avatar-photo ${small ? "sm" : ""}`} src={photo} alt="" aria-hidden="true" onError={() => setPhoto(null)} />;
-  const isNumber = /^\+?[\d\s()-]+$/.test(name.trim());
+  const cls = `avatar ${size ?? ""}`;
+  if (photo) return <img className={`${cls} avatar-photo`} src={photo} alt="" aria-hidden="true" onError={() => setPhoto(null)} />;
   return (
-    <div className={`avatar ${small ? "sm" : ""}`} style={{ background: bg, color: fg }} aria-hidden="true">
-      {isNumber ? <IconUser size={small ? 18 : 20} /> : initials(name)}
+    <div className={`${cls} avatar-default`} aria-hidden="true">
+      <IconPersonFill size={size === "lg" ? 84 : size === "sm" ? 34 : 40} />
     </div>
+  );
+}
+
+/** Rótulo de seção do painel do cliente, sempre com ícone. */
+function PanelLabel({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <span className="panel-label">
+      {icon}
+      {children}
+    </span>
   );
 }
 
@@ -152,7 +181,7 @@ function SetupChecklist({
     <div className="chat-empty">
       <div className="setup-card">
         <div>
-          <h2 className="card-title" style={{ fontSize: 18 }}>
+          <h2 className="card-title setup-title">
             Vamos deixar o atendimento pronto
           </h2>
           <p className="card-sub" style={{ marginBottom: 0 }}>
@@ -197,11 +226,9 @@ function AutoMessages({ c }: { c: Conversation }) {
   };
   return (
     <>
-      <div className="panel-sep" />
-      <div className="stack" style={{ gap: 6 }}>
-        <span className="panel-label">Mensagens automáticas</span>
+      <div className="panel-section">
+        <PanelLabel icon={off ? <IconBellOff size={14} /> : <IconBell size={14} />}>Mensagens automáticas</PanelLabel>
         <label className={`switch auto-msgs${off ? " off" : ""}`} title="Lembrete de reserva, aviso de chegada e retomada de conversa parada">
-          {off ? <IconBellOff size={15} /> : <IconBell size={15} />}
           <span className="switch-label">
             <strong>{off ? "Desligadas" : "Ligadas"}</strong>
           </span>
@@ -227,9 +254,8 @@ function CustomerNotes({ c }: { c: Conversation }) {
   if (!notes.length) return null;
   return (
     <>
-      <div className="panel-sep" />
-      <div className="stack" style={{ gap: 6 }}>
-        <span className="panel-label">A IA lembra</span>
+      <div className="panel-section">
+        <PanelLabel icon={<IconSpark size={14} />}>A IA lembra</PanelLabel>
         <ul className="notes">
           {notes.map((n) => (
             <li key={n}>
@@ -295,68 +321,94 @@ function DeleteConversation({ c }: { c: Conversation }) {
   );
 }
 
-function ClientPanel({ c }: { c: Conversation }) {
+function ClientPanel({ c, onClose }: { c: Conversation; onClose: () => void }) {
   return (
     <aside className="client-panel" aria-label="Dados do cliente">
-      <div className="stack" style={{ gap: 6 }}>
-        <span className="panel-label">Cliente</span>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{c.customerName ?? conversationName(c)}</span>
-        {c.verifiedBy ? (
-          <span className="verified">
-            <IconShield size={15} />
-            Verificado pelo {c.verifiedBy === "phone" ? "telefone" : "CPF"}
+      <header className="panel-head">
+        <button className="icon-btn" onClick={onClose} aria-label="Fechar dados do cliente" title="Fechar">
+          <IconX size={20} />
+        </button>
+        <h2>Dados do cliente</h2>
+      </header>
+      <div className="panel-body">
+        <div className="panel-profile">
+          <Avatar conversationId={c.id} size="lg" />
+          <span className="panel-name">{c.customerName ?? conversationName(c)}</span>
+          <span className="panel-phone">
+            <IconPhone size={13} />
+            {formatPhone(c.phone)}
           </span>
-        ) : (
-          <span className="unverified">Não identificado no cadastro</span>
-        )}
-        <span style={{ color: "var(--muted)" }}>{formatPhone(c.phone)}</span>
-      </div>
-      <AutoMessages c={c} />
-      <CustomerNotes c={c} />
-      <div className="panel-sep" />
-      <div className="stack" style={{ gap: 9 }}>
-        <span className="panel-label">O que a IA fez</span>
-        {c.lastAiActions.length === 0 ? (
-          <span className="unverified">Nada ainda nesta conversa.</span>
-        ) : (
-          <ol className="ai-steps">
-            {c.lastAiActions.map((a, i) => (
-              <li key={`${a.at}-${i}`} className={a.kind}>
-                <span className="n">{i + 1}</span>
-                <span>{a.label}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
-      <div className="panel-sep" />
-      <div className="stack" style={{ gap: 6 }}>
-        <span className="panel-label">Nesta conversa</span>
-        <div className="kv">
-          <span>Respostas da IA</span>
-          <b style={{ color: "var(--ia)" }}>{c.aiRepliesCount}</b>
+          {c.verifiedBy ? (
+            <span className="verified">
+              <IconShield size={14} />
+              Verificado pelo {c.verifiedBy === "phone" ? "telefone" : "CPF"}
+            </span>
+          ) : (
+            <span className="unverified">Não identificado no cadastro</span>
+          )}
         </div>
-        <div className="kv">
-          <span>Respostas humanas</span>
-          <b style={{ color: "var(--human)" }}>{c.humanRepliesCount}</b>
+        <AutoMessages c={c} />
+        <CustomerNotes c={c} />
+        <div className="panel-section">
+          <PanelLabel icon={<IconCheckCheck size={14} />}>O que a IA fez</PanelLabel>
+          {c.lastAiActions.length === 0 ? (
+            <span className="unverified">Nada ainda nesta conversa.</span>
+          ) : (
+            <ol className="ai-steps">
+              {c.lastAiActions.map((a, i) => (
+                <li key={`${a.at}-${i}`} className={a.kind}>
+                  <span className="n">{i + 1}</span>
+                  <span>{a.label}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
-        <div className="kv">
-          <span>Custo de IA</span>
-          <b>{usd(c.costUsd)}</b>
+        <div className="panel-section">
+          <PanelLabel icon={<IconChart size={14} />}>Nesta conversa</PanelLabel>
+          <div className="kv">
+            <span>Respostas da IA</span>
+            <b className="kv-ia">{c.aiRepliesCount}</b>
+          </div>
+          <div className="kv">
+            <span>Respostas humanas</span>
+            <b className="kv-human">{c.humanRepliesCount}</b>
+          </div>
+          <div className="kv">
+            <span>Custo de IA</span>
+            <b>{usd(c.costUsd)}</b>
+          </div>
+        </div>
+        <div className="panel-section">
+          <DeleteConversation c={c} />
         </div>
       </div>
-      <div className="panel-sep" />
-      <DeleteConversation c={c} />
     </aside>
   );
 }
 
-function ChatView({ conversation, typing }: { conversation: Conversation; typing?: TypingState }) {
+function ChatView({
+  conversation,
+  typing,
+  panelOpen,
+  onTogglePanel,
+}: {
+  conversation: Conversation;
+  typing?: TypingState;
+  panelOpen: boolean;
+  onTogglePanel: () => void;
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // longe do fim da conversa aparece o botão de voltar para a última mensagem, como no WhatsApp
+  const [away, setAway] = useState(false);
+  const onScroll = () => {
+    const el = listRef.current;
+    if (el) setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -432,37 +484,47 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
     : "não identificado";
 
   let lastDay = "";
+  let lastGroup = "";
   return (
     <section className="chat" aria-label={`Conversa com ${conversationName(conversation)}`}>
       <header className="chat-head">
         <div className="chat-head-id">
-          <Avatar name={conversation.displayName} seed={conversation.displayName} small conversationId={conversation.id} />
+          <Avatar conversationId={conversation.id} size="sm" />
           <ContactHeader conversation={conversation} ident={ident} typing={typing} />
         </div>
         <div className="chat-head-actions">
-        {conversation.state !== "ignorado" && (unanswered || replying) && (
+          {conversation.state !== "ignorado" && (unanswered || replying) && (
+            <button
+              className="btn-pill ia"
+              onClick={() => void replyNow()}
+              disabled={replying}
+              title="A IA lê as mensagens do cliente que ficaram sem resposta e responde agora"
+            >
+              <IconSpark size={15} />
+              <span className="btn-pill-label">{replying ? "Respondendo…" : "Responder com a IA"}</span>
+            </button>
+          )}
+          {conversation.state !== "ignorado" &&
+            (humanMode ? (
+              <button className="btn-pill ia" onClick={toggleOwner} disabled={busy} title="Devolver para a IA">
+                <IconSpark size={15} />
+                <span className="btn-pill-label">Devolver para a IA</span>
+              </button>
+            ) : (
+              <button className="btn-pill human" onClick={toggleOwner} disabled={busy} title="Assumir conversa">
+                <IconUser size={15} />
+                <span className="btn-pill-label">Assumir conversa</span>
+              </button>
+            ))}
           <button
-            className="btn-ia"
-            onClick={() => void replyNow()}
-            disabled={replying}
-            title="A IA lê as mensagens do cliente que ficaram sem resposta e responde agora"
+            className="icon-btn"
+            onClick={onTogglePanel}
+            aria-pressed={panelOpen}
+            aria-label="Dados do cliente"
+            title="Dados do cliente"
           >
-            <IconSpark size={14} />
-            {replying ? "Respondendo…" : "Responder com a IA"}
+            <IconInfo size={20} />
           </button>
-        )}
-        {conversation.state !== "ignorado" &&
-          (humanMode ? (
-            <button className="btn-ia" onClick={toggleOwner} disabled={busy}>
-              <IconSpark size={14} />
-              Devolver para a IA
-            </button>
-          ) : (
-            <button className="btn-human" onClick={toggleOwner} disabled={busy}>
-              <IconUser size={14} />
-              Assumir conversa
-            </button>
-          ))}
         </div>
       </header>
       {replyNote && (
@@ -471,38 +533,59 @@ function ChatView({ conversation, typing }: { conversation: Conversation; typing
           {replyNote.text}
         </div>
       )}
-      <div className="messages" ref={listRef} aria-live="polite" aria-busy={loading}>
-        {loading && sorted.length === 0 && <div className="empty">Carregando mensagens…</div>}
-        {sorted.map((m) => {
-          const day = dayLabel(m.createdAt);
-          const sep = day !== lastDay;
-          lastDay = day;
-          return (
-            <Fragment key={m.id}>
-              {sep && <div className="day-sep">{day}</div>}
-              <MessageBubble
-                m={m}
-                onResendSticker={
-                  m.origin === "consumidor" && m.kind === "sticker"
-                    ? (id) => void api.resendSticker(conversation.id, id)
-                    : undefined
-                }
-              />
-            </Fragment>
-          );
-        })}
-        {typing && (
-          <div className="customer-typing" role="status">
-            <span className="ai-dots" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            Cliente {typingLabel(typing)}
-          </div>
+      <div className="messages-wrap">
+        <div className="messages" ref={listRef} onScroll={onScroll} aria-live="polite" aria-busy={loading}>
+          {loading && sorted.length === 0 && (
+            <div className="sys loading">
+              <span className="spinner" aria-hidden="true" />
+              Carregando mensagens…
+            </div>
+          )}
+          {sorted.map((m) => {
+            const day = dayLabel(m.createdAt);
+            const sep = day !== lastDay;
+            lastDay = day;
+            const group = groupKey(m);
+            const first = sep || group !== lastGroup;
+            lastGroup = group;
+            return (
+              <Fragment key={m.id}>
+                {sep && <div className="day-sep">{day}</div>}
+                <MessageBubble
+                  m={m}
+                  first={first}
+                  onResendSticker={
+                    m.origin === "consumidor" && m.kind === "sticker"
+                      ? (id) => void api.resendSticker(conversation.id, id)
+                      : undefined
+                  }
+                />
+              </Fragment>
+            );
+          })}
+          {typing && (
+            <div className="customer-typing" role="status" aria-label={`Cliente ${typingLabel(typing)}`}>
+              <span className="ai-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              {typing === "recording" && "gravando áudio"}
+            </div>
+          )}
+          <AiActivity conversationId={conversation.id} />
+          <div ref={endRef} />
+        </div>
+        {away && (
+          <button
+            className="to-bottom"
+            onClick={() => endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" })}
+            aria-label="Ir para a última mensagem"
+            title="Ir para a última mensagem"
+          >
+            <IconChevronDown size={22} />
+          </button>
         )}
-        <AiActivity conversationId={conversation.id} />
-        <div ref={endRef} />
       </div>
       <Composer conversation={conversation} />
     </section>
@@ -576,9 +659,9 @@ function ContactHeader({ conversation, ident, typing }: { conversation: Conversa
       </form>
     );
   return (
-    <div style={{ minWidth: 0 }}>
+    <div className="chat-head-text">
       <div className="chat-head-name">
-        {conversationName(conversation)}
+        <span className="chat-head-name-text">{conversationName(conversation)}</span>
         <button className="icon-btn sm rename-btn" onClick={open} aria-label="Renomear e salvar contato" title="Renomear e salvar contato">
           <IconPencil size={14} />
         </button>
@@ -617,12 +700,13 @@ function AiActivity({ conversationId }: { conversationId: string }) {
   if (!label) return null;
   return (
     <div className="ai-activity" role="status">
+      <IconSpark size={13} />
+      {label}
       <span className="ai-dots" aria-hidden="true">
         <i />
         <i />
         <i />
       </span>
-      {label}
     </div>
   );
 }
@@ -643,6 +727,26 @@ export function ConversationsPage({
   const [loaded, setLoaded] = useState(false);
   const [, setTick] = useState(0);
   const typing = useTyping();
+  // painel "Dados do cliente": abre e fecha pelo botão do topo da conversa; a escolha fica guardada
+  const [panelOpen, setPanelOpen] = useState(() => {
+    // janela estreita: o painel abre por cima da conversa, então começa fechado
+    if (window.innerWidth < 1240) return false;
+    try {
+      const saved = localStorage.getItem(PANEL_KEY);
+      if (saved) return saved === "1";
+    } catch {
+      // sem armazenamento: usa o padrão
+    }
+    return window.innerWidth >= 1240;
+  });
+  const togglePanel = (open: boolean) => {
+    setPanelOpen(open);
+    try {
+      localStorage.setItem(PANEL_KEY, open ? "1" : "0");
+    } catch {
+      // segue sem guardar
+    }
+  };
 
   const reload = useCallback(async () => {
     const list = await api.listConversations(filter, q);
@@ -711,21 +815,27 @@ export function ConversationsPage({
     settings &&
     (!settings.nive.hasApiKey || !aiConfigured(settings) || (settings.evolution.mode === "evolution" && !settings.evolution.hasApiKey) || !whatsappOk);
 
-  const chips: Array<{ f: ConversationFilter; label: string; cls?: string }> = [
+  const chips: Array<{ f: ConversationFilter; label: string; icon?: ReactNode; count?: number; cls?: string }> = [
     { f: "todas", label: "Todas" },
-    { f: "precisa", label: `Precisam de você${needsHumanCount ? ` · ${needsHumanCount}` : ""}`, cls: "chip-need" },
-    { f: "ia", label: "IA" },
-    { f: "humano", label: "Humano" },
+    { f: "precisa", label: "Precisam de você", icon: <IconAlert size={13} />, count: needsHumanCount, cls: "chip-need" },
+    { f: "ia", label: "IA", icon: <IconSpark size={13} /> },
+    { f: "humano", label: "Humano", icon: <IconUser size={13} /> },
   ];
 
   return (
     <div className="inbox">
       <div className="conv-list">
         <div className="conv-list-head">
+          <h1 className="conv-list-title">Conversas</h1>
           <label className="search">
             <IconSearch size={16} />
             <span className="sr-only">Buscar conversa</span>
-            <input placeholder="Buscar conversa" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder="Buscar por nome ou telefone" value={q} onChange={(e) => setQ(e.target.value)} />
+            {q && (
+              <button className="search-clear" type="button" onClick={() => setQ("")} aria-label="Limpar busca">
+                <IconX size={14} />
+              </button>
+            )}
           </label>
           <div className="filters" role="group" aria-label="Filtrar conversas">
             {chips.map((c) => (
@@ -735,19 +845,30 @@ export function ConversationsPage({
                 aria-pressed={filter === c.f}
                 onClick={() => onFilter(c.f)}
               >
+                {c.icon}
                 {c.label}
+                {c.count ? <span className="chip-count">{c.count}</span> : null}
               </button>
             ))}
           </div>
         </div>
-        <ul className="conv-items" aria-label="Conversas">
+        <ul className="conv-items" aria-label="Conversas" aria-busy={!loaded}>
+          {!loaded && (
+            <li className="empty">
+              <span className="spinner" aria-hidden="true" />
+              Carregando conversas…
+            </li>
+          )}
           {loaded && items.length === 0 && (
             <li className="empty">
+              <span className="empty-icon">{q ? <IconSearch size={22} /> : <IconChat size={22} />}</span>
               {q ? "Nenhuma conversa encontrada." : filter === "precisa" ? "Nada esperando por você." : "Nenhuma conversa ainda."}
             </li>
           )}
           {items.map((c) => {
             const hot = c.state === "precisa_humano";
+            const mine = c.lastOrigin === "humano_app" || c.lastOrigin === "humano_celular";
+            const aux = auxLine(c);
             return (
               <li key={c.id}>
                 <button
@@ -755,30 +876,33 @@ export function ConversationsPage({
                   aria-current={selectedId === c.id ? "true" : undefined}
                   onClick={() => onSelect(c.id)}
                 >
-                  <Avatar name={c.displayName} seed={c.displayName} conversationId={c.id} />
+                  <Avatar conversationId={c.id} />
                   <div className="conv-body">
                     <div className="conv-row">
                       <span className="conv-name">{conversationName(c)}</span>
-                      <span className={`conv-time ${hot ? "hot" : ""}`}>{listTime(c.lastMessageAt)}</span>
+                      <span className={`conv-time ${hot ? "hot" : c.unread > 0 ? "new" : ""}`}>{listTime(c.lastMessageAt)}</span>
                     </div>
-                    <div className="conv-preview">
-                      {typing[c.id] ? (
-                        <span className="typing-text">{typingLabel(typing[c.id]!)}</span>
-                      ) : (
-                        <>
-                          {previewPrefix(c.lastOrigin)}
-                          {c.lastPreview}
-                        </>
+                    <div className="conv-row">
+                      <span className="conv-preview">
+                        {typing[c.id] ? (
+                          <span className="typing-text">{typingLabel(typing[c.id]!)}</span>
+                        ) : (
+                          <>
+                            {c.lastOrigin === "ia" && <IconSpark size={14} className="pv-icon ia" />}
+                            {mine && <IconCheckCheck size={16} className="pv-icon" />}
+                            <span className="pv-text">{c.lastPreview}</span>
+                          </>
+                        )}
+                      </span>
+                      {c.unread > 0 && (
+                        <span className={`unread ${hot ? "hot" : ""}`} aria-label={`${c.unread} não lidas`}>
+                          {c.unread}
+                        </span>
                       )}
                     </div>
                     <div className="conv-meta">
                       <StateTag state={c.state} />
-                      <span className="conv-aux">{auxLine(c)}</span>
-                      {c.unread > 0 && (
-                        <span className="unread" aria-label={`${c.unread} não lidas`}>
-                          {c.unread}
-                        </span>
-                      )}
+                      {aux && <span className="conv-aux">{aux}</span>}
                     </div>
                   </div>
                 </button>
@@ -789,8 +913,13 @@ export function ConversationsPage({
       </div>
       {selected ? (
         <>
-          <ChatView conversation={selected} typing={typing[selected.id]} />
-          <ClientPanel c={selected} />
+          <ChatView
+            conversation={selected}
+            typing={typing[selected.id]}
+            panelOpen={panelOpen}
+            onTogglePanel={() => togglePanel(!panelOpen)}
+          />
+          {panelOpen && <ClientPanel c={selected} onClose={() => togglePanel(false)} />}
         </>
       ) : needsSetup && settings ? (
         <SetupChecklist
@@ -801,7 +930,13 @@ export function ConversationsPage({
         />
       ) : (
         <div className="chat-empty">
-          <div className="empty">Escolha uma conversa na lista para ver as mensagens.</div>
+          <div className="chat-welcome">
+            <span className="chat-welcome-icon">
+              <IconChat size={34} />
+            </span>
+            <h2>Nive Atende</h2>
+            <p>Escolha uma conversa na lista para ver as mensagens e responder.</p>
+          </div>
         </div>
       )}
     </div>

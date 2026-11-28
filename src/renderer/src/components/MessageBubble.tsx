@@ -3,9 +3,24 @@ import { MapPreview } from "./MapPreview";
 import type { ChatMessage } from "../../../shared/types";
 import { api } from "../lib/api";
 import { hhmm } from "../lib/format";
-import { IconFile, IconImage, IconMapPin, IconPause, IconPlay, IconRepeat } from "./Icons";
+import {
+  IconAlert,
+  IconBan,
+  IconCheckCheck,
+  IconClock,
+  IconFile,
+  IconImage,
+  IconMapPin,
+  IconPause,
+  IconPhone,
+  IconPlay,
+  IconRepeat,
+  IconSpark,
+  IconTrash,
+  IconUser,
+  IconX,
+} from "./Icons";
 import { ImageViewer } from "./ImageViewer";
-import { HumanTag, IaTag } from "./Tag";
 import { WaText } from "./WaText";
 
 const mediaCache = new Map<string, string | null>();
@@ -94,7 +109,7 @@ function AudioPlayer({ m }: { m: ChatMessage }) {
           disabled={loading}
           aria-label={playing ? "Pausar áudio" : "Ouvir áudio"}
         >
-          {playing ? <IconPause size={14} /> : <IconPlay size={13} />}
+          {playing ? <IconPause size={20} /> : <IconPlay size={20} />}
         </button>
         <div className="wave" aria-hidden="true">
           {WAVE.map((h, i) => (
@@ -156,12 +171,12 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
       {(m.kind === "image" || m.kind === "video") && m.hasMedia && <ImageMedia m={m} />}
       {m.kind === "document" && (
         <div className="doc">
-          <IconFile size={22} />
-          <div>
+          <span className="doc-icon">
+            <IconFile size={20} />
+          </span>
+          <div className="doc-text">
             <div className="doc-name">{m.fileName ?? "Documento"}</div>
-            <div className="sub" style={{ fontSize: 11.5, color: "var(--muted)" }}>
-              {m.mediaMime ?? "arquivo"}
-            </div>
+            <div className="doc-sub">{m.mediaMime ?? "arquivo"}</div>
           </div>
         </div>
       )}
@@ -170,14 +185,18 @@ function Body({ m, onResendSticker }: { m: ChatMessage; onResendSticker?: () => 
           <MapPreview lat={m.geo.lat} lng={m.geo.lng} label={m.text ?? undefined} />
         ) : (
           <div className="doc">
-            <IconMapPin size={20} />
-            <span>Localização compartilhada</span>
+            <span className="doc-icon">
+              <IconMapPin size={20} />
+            </span>
+            <span className="doc-name">Localização compartilhada</span>
           </div>
         ))}
       {m.kind === "contact" && (
         <div className="doc">
-          <IconFile size={20} />
-          <span>Contato compartilhado</span>
+          <span className="doc-icon">
+            <IconUser size={20} />
+          </span>
+          <span className="doc-name">Contato compartilhado</span>
         </div>
       )}
       {m.kind === "sticker" && <Sticker m={m} onResend={onResendSticker} />}
@@ -199,7 +218,10 @@ function Deleted({ m }: { m: ChatMessage }) {
   const original = m.transcript ?? m.text;
   return (
     <div className="deleted">
-      <i>🚫 Mensagem apagada</i>
+      <span className="deleted-label">
+        <IconBan size={15} />
+        Mensagem apagada
+      </span>
       {original && (
         <button className="link-btn" onClick={() => setShow(!show)}>
           {show ? "ocultar" : "ver original"}
@@ -210,6 +232,7 @@ function Deleted({ m }: { m: ChatMessage }) {
   );
 }
 
+/** "Apagar para todos": lixeira que aparece ao passar o mouse, com confirmação ao lado da bolha. */
 function DeleteControl({ m }: { m: ChatMessage }) {
   const [step, setStep] = useState<"idle" | "confirm" | "busy">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -230,102 +253,120 @@ function DeleteControl({ m }: { m: ChatMessage }) {
     }
   };
   return (
-    <span className="del-ctl">
+    <span className={`del-ctl${step !== "idle" || error ? " open" : ""}`}>
       {step === "idle" && (
-        <button className="link-btn del" onClick={() => setStep("confirm")} title="Apagar para todos">
-          Apagar
+        <button className="icon-btn sm" onClick={() => setStep("confirm")} aria-label="Apagar para todos" title="Apagar para todos">
+          <IconTrash size={15} />
         </button>
       )}
       {step === "confirm" && (
-        <>
+        <span className="del-confirm">
           <button className="link-btn del strong" onClick={() => void run()}>
+            <IconTrash size={13} />
             Apagar para todos?
           </button>
-          <button className="link-btn" onClick={() => setStep("idle")}>
-            cancelar
+          <button className="icon-btn sm" onClick={() => setStep("idle")} aria-label="Cancelar" title="Cancelar">
+            <IconX size={13} />
           </button>
-        </>
+        </span>
       )}
-      {step === "busy" && <span>apagando…</span>}
-      {error && <span className="del-err">{error}</span>}
+      {step === "busy" && <span className="del-confirm">apagando…</span>}
+      {error && <span className="del-confirm del-err">{error}</span>}
     </span>
   );
 }
 
-function statusLabel(m: ChatMessage): string {
-  if (m.status === "pending") return " · enviando…";
-  return " · " + hhmm(m.createdAt) + (m.status === "sent" ? " ✓✓" : "");
+/**
+ * Chave de agrupamento: mensagens seguidas de quem é a mesma pessoa ficam coladas, como no WhatsApp,
+ * e só a primeira ganha a ponta da bolha e o nome de quem respondeu.
+ */
+export function groupKey(m: ChatMessage): string {
+  if (m.origin === "sistema") return "sys";
+  if (m.origin === "consumidor") return "in";
+  return `out|${m.origin}|${m.author ?? ""}`;
+}
+
+/** Quem respondeu (IA, pessoa pelo app ou pelo celular), no topo da primeira bolha do grupo. */
+function Sender({ m }: { m: ChatMessage }) {
+  if (m.origin === "ia")
+    return (
+      <span className="bubble-sender ia">
+        <IconSpark size={12} />
+        IA
+      </span>
+    );
+  if (m.origin === "humano_celular")
+    return (
+      <span className="bubble-sender human">
+        <IconPhone size={12} />
+        Pelo celular
+      </span>
+    );
+  return (
+    <span className="bubble-sender human">
+      <IconUser size={12} />
+      {m.author || "Você"}
+    </span>
+  );
+}
+
+/** Hora e situação do envio, no canto de baixo da bolha. */
+function Meta({ m, out }: { m: ChatMessage; out?: boolean }) {
+  const failed = m.status === "failed";
+  return (
+    <span className={`bubble-meta${failed ? " fail" : ""}`}>
+      {failed && (
+        <>
+          <IconAlert size={12} />
+          Falhou ao enviar ·
+        </>
+      )}
+      {m.status === "deleted" && out && "apagada para todos · "}
+      {m.status === "pending" ? "enviando…" : hhmm(m.createdAt)}
+      {out && m.status === "pending" && <IconClock size={13} />}
+      {out && m.status === "sent" && <IconCheckCheck size={15} className="ticks" />}
+    </span>
+  );
 }
 
 export function MessageBubble({
   m,
+  first = true,
   onResendSticker,
 }: {
   m: ChatMessage;
+  /** primeira mensagem de um grupo (ganha a ponta e o nome de quem respondeu) */
+  first?: boolean;
   onResendSticker?: (messageId: string) => void;
 }) {
   if (m.origin === "sistema") {
-    return <div className={`sys ${m.eventType ?? ""}`}>{m.text} · {hhmm(m.createdAt)}</div>;
-  }
-  if (m.origin === "consumidor" && m.status === "deleted") {
     return (
-      <div className="msg in">
-        <div className="bubble cli">
-          <Deleted m={m} />
-          <span className="bubble-time">{hhmm(m.createdAt)}</span>
-        </div>
+      <div className={`sys ${m.eventType ?? ""}`}>
+        {m.text} · {hhmm(m.createdAt)}
       </div>
     );
   }
-  if (m.origin === "consumidor") {
-    const bare = m.kind === "sticker";
-    return (
-      <div className="msg in">
-        {bare ? (
-          <Body m={m} onResendSticker={onResendSticker ? () => onResendSticker(m.id) : undefined} />
-        ) : (
-          <div className="bubble cli">
-            <Body m={m} />
-            <span className="bubble-time">{hhmm(m.createdAt)}</span>
-          </div>
-        )}
-        {bare && <span className="audio-dur">{hhmm(m.createdAt)}</span>}
-      </div>
-    );
-  }
-  const isIa = m.origin === "ia";
-  const failed = m.status === "failed";
+  const out = m.origin !== "consumidor";
   const deleted = m.status === "deleted";
+  const bare = m.kind === "sticker" && !deleted;
+  const tone = !out ? "cli" : m.origin === "ia" ? "ia" : "human";
+  const media = !deleted && m.hasMedia && (m.kind === "image" || m.kind === "video");
   return (
-    <div className="msg out">
-      {deleted ? (
-        <div className={`bubble ${isIa ? "ia" : "human"}`}>
-          <Deleted m={m} />
+    <div className={`msg ${out ? "out" : "in"}${first ? " first" : ""}`}>
+      {out && !deleted && <DeleteControl m={m} />}
+      {bare ? (
+        <div className="bare">
+          {out && first && <Sender m={m} />}
+          <Body m={m} onResendSticker={!out && onResendSticker ? () => onResendSticker(m.id) : undefined} />
+          <Meta m={m} out={out} />
         </div>
-      ) : m.kind === "sticker" ? (
-        <Body m={m} />
       ) : (
-        <div className={`bubble ${isIa ? "ia" : "human"}`}>
-          <Body m={m} />
+        <div className={`bubble ${tone}${first ? " tail" : ""}${media ? " has-media" : ""}`}>
+          {out && first && <Sender m={m} />}
+          {deleted ? <Deleted m={m} /> : <Body m={m} />}
+          <Meta m={m} out={out} />
         </div>
       )}
-      <div className={`msg-tagline ${failed ? "fail" : isIa ? "ia" : "human"}`}>
-        {isIa ? <IaTag /> : <HumanTag phone={m.origin === "humano_celular"} />}
-        {deleted ? (
-          <span>apagada para todos · {hhmm(m.createdAt)}</span>
-        ) : failed ? (
-          <span>Falhou ao enviar · {hhmm(m.createdAt)}</span>
-        ) : isIa ? (
-          <span>resposta automática{statusLabel(m)}</span>
-        ) : m.origin === "humano_celular" ? (
-          <span>pelo celular{statusLabel(m)}</span>
-        ) : (
-          <span>
-            {m.author ? `${m.author} · ` : ""}pelo app{statusLabel(m)}
-          </span>
-        )}
-        {!deleted && <DeleteControl m={m} />}
-      </div>
     </div>
   );
 }

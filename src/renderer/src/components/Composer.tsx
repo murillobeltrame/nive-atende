@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Conversation } from "../../../shared/types";
 import { api } from "../lib/api";
 import { fileToBase64, hhmm } from "../lib/format";
-import { IconClip, IconMapPin, IconMic, IconSend, IconX } from "./Icons";
+import { IconAlert, IconBan, IconClip, IconMapPin, IconMic, IconSend, IconSpark, IconTrash, IconUser } from "./Icons";
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024;
 
@@ -151,24 +151,21 @@ export function Composer({ conversation }: { conversation: Conversation }) {
 
   return (
     <div className="composer">
-      <div className={`composer-note ${paused ? "" : "ia"}`}>
+      <div className={`composer-note ${ignored ? "ignored" : paused ? "human" : "ia"}`}>
+        {ignored ? <IconBan size={14} /> : paused ? <IconUser size={14} /> : <IconSpark size={14} />}
         <span>
-          <span className="dot" aria-hidden="true" />
           {ignored
             ? "Número ignorado: a IA não responde nesta conversa."
             : paused
               ? `Você está respondendo. A IA não envia nada nesta conversa até ${hhmm(conversation.aiPausedUntil ?? 0)}.`
               : "A IA está atendendo. Se você responder, ela pausa nesta conversa."}
         </span>
-        <button className="link-btn" onClick={suggest} disabled={suggesting}>
-          {suggesting ? "Gerando sugestão…" : "Sugestão da IA"}
-        </button>
       </div>
       <div className="composer-row">
         {recording ? (
           <>
-            <button className="icon-btn" onClick={() => stopRecording(true)} aria-label="Cancelar gravação">
-              <IconX size={20} />
+            <button className="icon-btn" onClick={() => stopRecording(true)} aria-label="Cancelar gravação" title="Descartar áudio">
+              <IconTrash size={20} />
             </button>
             <div className="recording" role="status">
               <span className="rec-dot" aria-hidden="true" />
@@ -184,6 +181,7 @@ export function Composer({ conversation }: { conversation: Conversation }) {
               className="icon-btn"
               onClick={() => fileRef.current?.click()}
               aria-label="Anexar imagem, vídeo ou documento"
+              title="Anexar imagem, vídeo ou documento"
               disabled={sending}
             >
               <IconClip size={21} />
@@ -209,6 +207,7 @@ export function Composer({ conversation }: { conversation: Conversation }) {
             <label className="sr-only" htmlFor="composer-input">
               Mensagem
             </label>
+            <div className="composer-field">
             <textarea
               id="composer-input"
               ref={inputRef}
@@ -224,12 +223,22 @@ export function Composer({ conversation }: { conversation: Conversation }) {
                 }
               }}
             />
+              <button
+                className={`suggest-btn${suggesting ? " busy" : ""}`}
+                onClick={suggest}
+                disabled={suggesting}
+                title="A IA escreve uma sugestão de resposta para você revisar e enviar"
+              >
+                {suggesting ? <span className="spinner" aria-hidden="true" /> : <IconSpark size={14} />}
+                {suggesting ? "Gerando…" : "Sugestão da IA"}
+              </button>
+            </div>
             {text.trim() ? (
-              <button className="send-btn" onClick={sendText} disabled={sending} aria-label="Enviar mensagem">
-                <IconSend size={18} />
+              <button className="send-btn" onClick={sendText} disabled={sending} aria-label="Enviar mensagem" title="Enviar">
+                {sending ? <span className="spinner light" aria-hidden="true" /> : <IconSend size={18} />}
               </button>
             ) : (
-              <button className="send-btn" onClick={startRecording} disabled={sending} aria-label="Gravar áudio">
+              <button className="send-btn" onClick={startRecording} disabled={sending} aria-label="Gravar áudio" title="Gravar áudio">
                 <IconMic size={20} />
               </button>
             )}
@@ -238,6 +247,7 @@ export function Composer({ conversation }: { conversation: Conversation }) {
       </div>
       {error && (
         <div className="composer-error" role="alert">
+          <IconAlert size={14} />
           {error}
         </div>
       )}

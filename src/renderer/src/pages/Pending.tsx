@@ -5,6 +5,8 @@ import { prettyName } from "../../../shared/format";
 import type { Conversation, Reservation } from "../../../shared/types";
 import { api } from "../lib/api";
 import { conversationName, listTime, money, waitingSince } from "../lib/format";
+import { IconAlert, IconBag, IconChat, IconCheck, IconClock, IconInbox, IconX } from "../components/Icons";
+import { EmptyState, PageTitle, SectionTitle } from "../components/PageTitle";
 
 const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
@@ -71,27 +73,33 @@ export function PendingPage({ onOpenConversation }: Props) {
   return (
     <div className="page">
       <div className="page-pad">
-        <h1 className="page-title">Pendências</h1>
+        <PageTitle icon={<IconInbox size={20} />}>Pendências</PageTitle>
         <p className="page-sub">O que precisa de você agora: conversas que a IA passou para a loja e reservas para aprovar.</p>
         {error && (
-          <div className="callout danger" role="alert" style={{ marginBottom: 12 }}>
+          <div className="callout danger" role="alert">
+            <IconAlert size={16} />
             {error}
           </div>
         )}
-        <h2 className="section-h">Conversas que precisam de você ({convs.length})</h2>
+        <SectionTitle icon={<IconChat size={17} />} count={convs.length}>
+          Conversas que precisam de você
+        </SectionTitle>
         {convs.length === 0 ? (
-          <div className="card empty">
-            <strong>Nenhuma conversa esperando por você.</strong>
-            <span>Quando a IA não souber responder, ou o cliente pedir para falar com uma pessoa, a conversa aparece aqui.</span>
-          </div>
+          <EmptyState icon={<IconCheck size={22} />} title="Nenhuma conversa esperando por você.">
+            Quando a IA não souber responder, ou o cliente pedir para falar com uma pessoa, a conversa aparece aqui.
+          </EmptyState>
         ) : (
           <div className="pending-list">
             {convs.map((c) => (
               <div className="pending-item" key={c.id}>
+                <span className="pending-icon need" aria-hidden="true">
+                  <IconChat size={18} />
+                </span>
                 <div className="grow">
                   <div className="title">
                     {c.customerName ?? conversationName(c)}
                     <span className="pending-wait" title={new Date(c.lastMessageAt).toLocaleString("pt-BR")}>
+                      <IconClock size={13} />
                       esperando {waitingSince(c.lastMessageAt)}
                     </span>
                   </div>
@@ -107,9 +115,11 @@ export function PendingPage({ onOpenConversation }: Props) {
                     title="Tira da lista. A IA volta a responder este cliente na próxima mensagem."
                     onClick={() => void resolve(c.id)}
                   >
+                    <IconCheck size={14} />
                     Marcar como resolvida
                   </button>
                   <button className="btn sm primary" onClick={() => onOpenConversation(c.id)}>
+                    <IconChat size={14} />
                     Abrir conversa
                   </button>
                 </div>
@@ -117,17 +127,20 @@ export function PendingPage({ onOpenConversation }: Props) {
             ))}
           </div>
         )}
-        <h2 className="section-h">Reservas aguardando aprovação ({res.length})</h2>
+        <SectionTitle icon={<IconBag size={17} />} count={res.length}>
+          Reservas aguardando aprovação
+        </SectionTitle>
         {res.length === 0 ? (
-          <div className="card empty">
-            <strong>Nenhuma reserva para aprovar.</strong>
-            <span>Quando um cliente pedir para separar um produto pelo WhatsApp, o pedido aparece aqui para você aprovar ou recusar.</span>
-          </div>
+          <EmptyState icon={<IconBag size={22} />} title="Nenhuma reserva para aprovar.">
+            Quando um cliente pedir para separar um produto pelo WhatsApp, o pedido aparece aqui para você aprovar ou recusar.
+          </EmptyState>
         ) : (
           <div className="pending-list">
             {res.map((r) => (
               <div className="pending-item" key={r.id}>
-                <span className="tag tag-warn">RESERVA</span>
+                <span className="pending-icon warn" aria-hidden="true">
+                  <IconBag size={18} />
+                </span>
                 <div className="grow">
                   <div className="title">
                     {r.quantity}× {prettyName(r.productDescription)} {r.variantLabel !== "Único" ? r.variantLabel : ""} · em nome de <b>{r.customerName}</b>
@@ -140,9 +153,11 @@ export function PendingPage({ onOpenConversation }: Props) {
                 </div>
                 <div className="btn-row">
                   <button className="btn sm" onClick={() => onOpenConversation(r.conversationId)}>
+                    <IconChat size={14} />
                     Ver conversa
                   </button>
                   <button className="btn sm danger" disabled={busy === r.id} onClick={() => act(r.id, api.rejectReservation)}>
+                    <IconX size={14} />
                     Recusar
                   </button>
                   <button
@@ -150,6 +165,7 @@ export function PendingPage({ onOpenConversation }: Props) {
                     disabled={busy === r.id || needsChoice(r, choices[r.id])}
                     onClick={() => act(r.id, (id) => api.approveReservation(id, choices[r.id]))}
                   >
+                    <IconCheck size={14} />
                     {approveLabel(r)}
                   </button>
                 </div>

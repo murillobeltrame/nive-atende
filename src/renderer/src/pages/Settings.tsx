@@ -2,7 +2,23 @@ import { useEffect, useState, type ReactNode } from "react";
 import { MapPreview } from "../components/MapPreview";
 import type { AiProviderId, AppSettings, ProductNickname, SecretKey, TestResult } from "../../../shared/types";
 import { PROVIDER_IDS, PROVIDERS, TIER_LABEL, TIER_ORDER, type CatalogModel } from "../../../shared/ai-catalog";
-import { IconCheck, IconExternal, IconEye, IconEyeOff, IconX } from "../components/Icons";
+import {
+  IconBag,
+  IconChat,
+  IconCheck,
+  IconExternal,
+  IconEye,
+  IconEyeOff,
+  IconGear,
+  IconMic,
+  IconMonitor,
+  IconPlug,
+  IconSmile,
+  IconSpark,
+  IconTagLabel,
+  IconWallet,
+  IconX,
+} from "../components/Icons";
 import { api } from "../lib/api";
 import { useUpdateState } from "../components/UpdateBanner";
 
@@ -17,16 +33,16 @@ export type SettingsSection =
   | "audio"
   | "app";
 
-const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
-  { id: "conexoes", label: "Conexões" },
-  { id: "ia", label: "Inteligência artificial" },
-  { id: "atendimento", label: "Atendimento" },
-  { id: "reserva", label: "Reserva" },
-  { id: "contas", label: "Contas dos clientes" },
-  { id: "personalidade", label: "Personalidade" },
-  { id: "apelidos", label: "Apelidos de produtos" },
-  { id: "audio", label: "Áudio" },
-  { id: "app", label: "Programa" },
+const SECTIONS: Array<{ id: SettingsSection; label: string; icon: ReactNode }> = [
+  { id: "conexoes", label: "Conexões", icon: <IconPlug size={17} /> },
+  { id: "ia", label: "Inteligência artificial", icon: <IconSpark size={17} /> },
+  { id: "atendimento", label: "Atendimento", icon: <IconChat size={17} /> },
+  { id: "reserva", label: "Reserva", icon: <IconBag size={17} /> },
+  { id: "contas", label: "Contas dos clientes", icon: <IconWallet size={17} /> },
+  { id: "personalidade", label: "Personalidade", icon: <IconSmile size={17} /> },
+  { id: "apelidos", label: "Apelidos de produtos", icon: <IconTagLabel size={17} /> },
+  { id: "audio", label: "Áudio", icon: <IconMic size={17} /> },
+  { id: "app", label: "Programa", icon: <IconMonitor size={17} /> },
 ];
 
 interface Props {
@@ -1477,9 +1493,13 @@ export function SettingsPage(props: Props) {
   return (
     <div className="settings">
       <nav className="settings-nav" aria-label="Seções de ajustes">
-        <h2>Ajustes</h2>
+        <h2>
+          <IconGear size={20} />
+          Ajustes
+        </h2>
         {SECTIONS.map((s) => (
           <button key={s.id} aria-current={section === s.id ? "true" : undefined} onClick={() => onSection(s.id)}>
+            {s.icon}
             {s.label}
           </button>
         ))}

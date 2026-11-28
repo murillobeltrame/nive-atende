@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { IconAlert, IconBag, IconCalendar, IconChart, IconChat, IconClock, IconMic, IconShield, IconSpark, IconUser, IconWallet } from "../components/Icons";
+import { EmptyState, PageTitle, SectionTitle } from "../components/PageTitle";
 import type { AuditEntry, DailySummary, UsageSummary } from "../../../shared/types";
 import { api } from "../lib/api";
 import { formatPhone, usd } from "../lib/format";
@@ -15,10 +17,15 @@ const ACTION_LABEL: Record<string, string> = {
   identificacao_bloqueada: "Consulta bloqueada por tentativas",
 };
 
-function Stat({ label, value, foot, cls }: { label: string; value: string; foot?: string; cls?: string }) {
+function Stat({ label, value, foot, cls, icon }: { label: string; value: string; foot?: string; cls?: string; icon: ReactNode }) {
   return (
     <div className="stat">
-      <div className="stat-label">{label}</div>
+      <div className="stat-label">
+        <span className={`stat-icon ${cls ?? ""}`} aria-hidden="true">
+          {icon}
+        </span>
+        {label}
+      </div>
       <div className={`stat-value ${cls ?? ""}`}>{value}</div>
       {foot && <div className="stat-foot">{foot}</div>}
     </div>
@@ -34,7 +41,17 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
     void api.getUsage().then(setU);
     void api.listAudit(50).then(setAudit);
   }, []);
-  if (!u) return <div className="page"><div className="page-pad">Carregando…</div></div>;
+  if (!u)
+    return (
+      <div className="page">
+        <div className="page-pad">
+          <div className="empty" role="status">
+            <span className="spinner" aria-hidden="true" />
+            Carregando consumo…
+          </div>
+        </div>
+      </div>
+    );
 
   const over = u.monthlyAlertUsd > 0 && u.month.costUsd >= u.monthlyAlertUsd;
   const pct = u.monthlyAlertUsd > 0 ? Math.min(100, (u.month.costUsd / u.monthlyAlertUsd) * 100) : 0;
@@ -43,52 +60,75 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
   return (
     <div className="page">
       <div className="page-pad">
-        <h1 className="page-title">Consumo</h1>
+        <PageTitle icon={<IconChart size={20} />}>Consumo</PageTitle>
         <p className="page-sub">
           Quantas respostas a IA deu e quanto isso custou na sua conta da plataforma de IA. Os valores são estimados neste
           computador; o valor oficial está no site da plataforma (OpenAI, Anthropic ou Google).
         </p>
         {over && (
-          <div className="callout" role="alert" style={{ marginBottom: 16 }}>
+          <div className="callout" role="alert">
+            <IconAlert size={16} />
+            <span>
             O gasto estimado deste mês ({usd(u.month.costUsd)}) passou do seu alerta de {usd(u.monthlyAlertUsd)}.{" "}
             <button className="ext-link" onClick={onOpenGuide}>
               Ver como adicionar créditos
             </button>
+            </span>
           </div>
         )}
         {summary && (
           <div className="card day-summary">
-            <h2 className="card-title">Resumo de hoje</h2>
+            <h2 className="card-title">
+              <IconCalendar size={17} />
+              Resumo de hoje
+            </h2>
             <ul>
               <li>
+                <IconChat size={15} />
+                <span>
                 <b>{summary.conversations}</b> conversa(s) com clientes ({summary.newContacts} novo(s))
+                </span>
               </li>
               <li>
+                <IconBag size={15} />
+                <span>
                 <b>{summary.reservationsCreated}</b> reserva(s) pedida(s) hoje
                 {summary.reservationsPending ? ` · ${summary.reservationsPending} aguardando sua aprovação` : ""}
+                </span>
               </li>
               <li className={summary.unanswered ? "warn" : ""}>
-                <b>{summary.unanswered}</b> conversa(s) esperando resposta
+                <IconAlert size={15} />
+                <span>
+                  <b>{summary.unanswered}</b> conversa(s) esperando resposta
+                </span>
               </li>
               <li>
-                <b>{summary.waitlist}</b> cliente(s) esperando produto chegar
+                <IconClock size={15} />
+                <span>
+                  <b>{summary.waitlist}</b> cliente(s) esperando produto chegar
+                </span>
               </li>
             </ul>
           </div>
         )}
-        <h2 className="section-h" style={{ marginTop: 0 }}>Hoje</h2>
+        <SectionTitle icon={<IconClock size={17} />}>Hoje</SectionTitle>
         <div className="stats">
-          <Stat label="Respostas da IA" value={String(u.today.aiReplies)} cls="ia" />
-          <Stat label="Respostas humanas" value={String(u.today.humanReplies)} cls="human" />
-          <Stat label="Custo estimado" value={usd(u.today.costUsd)} />
-          <Stat label="Áudios transcritos" value={`${Math.round(u.today.transcriptionSeconds / 60)} min`} />
+          <Stat icon={<IconSpark size={15} />} label="Respostas da IA" value={String(u.today.aiReplies)} cls="ia" />
+          <Stat icon={<IconUser size={15} />} label="Respostas humanas" value={String(u.today.humanReplies)} cls="human" />
+          <Stat icon={<IconWallet size={15} />} label="Custo estimado" value={usd(u.today.costUsd)} />
+          <Stat icon={<IconMic size={15} />} label="Áudios transcritos" value={`${Math.round(u.today.transcriptionSeconds / 60)} min`} />
         </div>
-        <h2 className="section-h">Este mês</h2>
+        <SectionTitle icon={<IconCalendar size={17} />}>Este mês</SectionTitle>
         <div className="stats">
-          <Stat label="Respostas da IA" value={String(u.month.aiReplies)} cls="ia" />
-          <Stat label="Respostas humanas" value={String(u.month.humanReplies)} cls="human" />
+          <Stat icon={<IconSpark size={15} />} label="Respostas da IA" value={String(u.month.aiReplies)} cls="ia" />
+          <Stat icon={<IconUser size={15} />} label="Respostas humanas" value={String(u.month.humanReplies)} cls="human" />
           <div className="stat">
-            <div className="stat-label">Custo estimado</div>
+            <div className="stat-label">
+              <span className="stat-icon" aria-hidden="true">
+                <IconWallet size={15} />
+              </span>
+              Custo estimado
+            </div>
             <div className="stat-value">{usd(u.month.costUsd)}</div>
             {u.monthlyAlertUsd > 0 && (
               <>
@@ -100,6 +140,7 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
             )}
           </div>
           <Stat
+            icon={<IconMic size={15} />}
             label="Áudios transcritos"
             value={`${Math.round(u.month.transcriptionSeconds / 60)} min`}
             foot={`${(u.month.inputTokens + u.month.outputTokens).toLocaleString("pt-BR")} tokens`}
@@ -107,7 +148,10 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
         </div>
         <div className="card">
           <div className="btn-row" style={{ justifyContent: "space-between" }}>
-            <div className="card-title">Respostas por dia</div>
+            <div className="card-title">
+              <IconChart size={17} />
+              Respostas por dia
+            </div>
             <div className="legend">
               <span>
                 <i style={{ background: "var(--ia)" }} />
@@ -135,12 +179,12 @@ export function UsagePage({ onOpenGuide }: { onOpenGuide: () => void }) {
             })}
           </div>
         </div>
-        <h2 className="section-h">Consultas sensíveis registradas</h2>
-        <p className="page-sub" style={{ marginBottom: 10 }}>
+        <SectionTitle icon={<IconShield size={17} />}>Consultas sensíveis registradas</SectionTitle>
+        <p className="page-sub section-sub">
           Toda consulta de conta de cliente fica registrada aqui, para você conferir quem consultou o quê.
         </p>
         {audit.length === 0 ? (
-          <div className="card empty">Nenhuma consulta registrada.</div>
+          <EmptyState icon={<IconShield size={22} />} title="Nenhuma consulta registrada." />
         ) : (
           <div className="table-wrap">
             <table>

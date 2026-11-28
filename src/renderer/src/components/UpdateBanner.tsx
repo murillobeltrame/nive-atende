@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { UpdateState } from "../../../shared/types";
 import { api } from "../lib/api";
+import { IconDownload, IconRefresh } from "./Icons";
 
 /** Estado da atualização do programa, sempre atual. */
 export function useUpdateState(): UpdateState | null {
@@ -35,6 +36,7 @@ export function UpdateBanner() {
               if (!(await api.installUpdate())) setInstalling(false);
             }}
           >
+            <IconRefresh size={14} />
             {installing ? "Atualizando…" : "Atualizar agora"}
           </button>
           <button className="update-btn" disabled={installing} onClick={() => setDismissed(update.version)}>
@@ -55,6 +57,7 @@ export function UpdateBanner() {
         <span className="update-actions">
           {url && (
             <button className="update-btn primary" onClick={() => void api.openExternal(url)}>
+              <IconDownload size={14} />
               Baixar
             </button>
           )}
