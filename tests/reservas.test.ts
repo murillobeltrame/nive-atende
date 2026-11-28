@@ -25,7 +25,7 @@ describe("reserva em nome do cliente", () => {
     expect(t.nive.drafts[0]!.customerId).toBe("new-1");
     const notes = t.nive.drafts[0]!.notes;
     expect(notes).toContain("Reserva pelo WhatsApp (Nive Atende) · Nathalia Rocker Beltrame");
-    expect(notes).toContain("Conversa:");
+    expect(notes).toContain("[Conversa Nive Atende]");
     expect(notes).toContain("Cliente: pode separar em nome de nathalia rocker beltrame");
     expect(t.store.listMessages(JID).some((m) => m.eventType === "reservation_pending")).toBe(false);
   });

@@ -1972,8 +1972,14 @@ export function aiErrorDetail(e: unknown): string {
 
 /**
  * Observação do rascunho no ERP: cabeçalho da reserva + a conversa (do fim para o começo, até caber
- * nos 2.000 caracteres que o sistema aceita). O lojista lê pelo ícone na lista de rascunhos.
+ * nos 2.000 caracteres que o sistema aceita). A conversa vem entre os marcadores
+ * `[Conversa Nive Atende]` e `[/Conversa Nive Atende]`: o ERP reconhece e mostra como chat
+ * (balões de cliente e atendente); fora do ERP (impressão, outros sistemas) continua legível como texto.
+ * Cada linha: `dd/mm, HH:MM Cliente|Atendente|Loja: texto`.
  */
+export const CONVERSATION_OPEN = "[Conversa Nive Atende]";
+export const CONVERSATION_CLOSE = "[/Conversa Nive Atende]";
+
 export function reservationNotes(header: string, messages: ChatMessage[], max = 1990): string {
   const who: Partial<Record<ChatMessage["origin"], string>> = { consumidor: "Cliente", ia: "Atendente", humano_app: "Loja", humano_celular: "Loja" };
   const lines: string[] = [];
@@ -1986,9 +1992,10 @@ export function reservationNotes(header: string, messages: ChatMessage[], max = 
     const time = new Date(m.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     lines.push(`${time} ${label}: ${body.length > 400 ? `${body.slice(0, 399)}…` : body}`);
   }
-  const head = `${header}\n\nConversa:`;
+  const head = `${header}\n\n${CONVERSATION_OPEN}`;
+  const tail = `\n${CONVERSATION_CLOSE}`;
   const kept: string[] = [];
-  let size = head.length;
+  let size = head.length + tail.length + 2; // + "…\n" se cortar o começo
   for (let i = lines.length - 1; i >= 0; i--) {
     const add = lines[i]!.length + 1;
     if (size + add > max) break;
@@ -1996,5 +2003,5 @@ export function reservationNotes(header: string, messages: ChatMessage[], max = 
     size += add;
   }
   if (!kept.length) return header.slice(0, max);
-  return `${head}\n${kept.length < lines.length ? "…\n" : ""}${kept.join("\n")}`.slice(0, max);
+  return `${head}\n${kept.length < lines.length ? "…\n" : ""}${kept.join("\n")}${tail}`;
 }

@@ -53,13 +53,14 @@ describe("observação do rascunho com a conversa", () => {
   });
   it("leva cliente e atendente, sem eventos do sistema, no horário de Brasília", () => {
     const n = reservationNotes("Reserva", [msg(0, "consumidor", "Ainda tem?"), msg(1, "sistema", "evento"), msg(2, "ia", "Tem sim!")]);
-    expect(n).toBe("Reserva\n\nConversa:\n27/11, 19:45 Cliente: Ainda tem?\n27/11, 19:47 Atendente: Tem sim!");
+    expect(n).toBe("Reserva\n\n[Conversa Nive Atende]\n27/11, 19:45 Cliente: Ainda tem?\n27/11, 19:47 Atendente: Tem sim!\n[/Conversa Nive Atende]");
   });
   it("conversa longa: guarda o final e cabe no limite do sistema", () => {
     const many = Array.from({ length: 80 }, (_, i) => msg(i, i % 2 ? "ia" : "consumidor", `mensagem número ${i} `.repeat(4)));
     const n = reservationNotes("Reserva", many);
     expect(n.length).toBeLessThanOrEqual(1990);
     expect(n).toContain("mensagem número 79");
-    expect(n).toContain("…\n");
+    expect(n).toContain("[Conversa Nive Atende]\n…\n");
+    expect(n.endsWith("[/Conversa Nive Atende]")).toBe(true);
   });
 });
