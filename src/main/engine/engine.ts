@@ -1717,8 +1717,9 @@ export class Engine extends EventEmitter<EngineEvents> {
     const conv = store.getConversation(conversationId)!;
     const expiresAt = this.now() + s.reservation.validityHours * 3_600_000;
     const who = await this.resolveReservationCustomer(input.customer, input.customerName, conv.phone);
-    // com cadastro parecido, mesmo na reserva automática o lojista confirma quem é antes de lançar
-    const auto = s.reservation.autoEnabled && who.customerStatus !== "confirm";
+    // A reserva vai sempre direto para o sistema Nive como rascunho, com a conversa na observação:
+    // o lojista confere e aceita por lá (finaliza na retirada ou exclui). A aprovação no app saiu.
+    const auto = true;
     let r = store.insertReservation({
       createdAt: this.now(),
       conversationId,
@@ -1779,13 +1780,15 @@ export class Engine extends EventEmitter<EngineEvents> {
     } catch (e) {
       return store.updateReservation(r.id, { status: "failed", error: `Não foi possível cadastrar o cliente: ${(e as Error).message}`.slice(0, 200) });
     }
-    const validade = new Date(r.expiresAt).toLocaleString("pt-BR");
+    const validade = new Date(r.expiresAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const header = `Reserva pelo WhatsApp (Nive Atende) · ${r.customerName} · ${callerNational(r.phone) || r.phone} · válida até ${validade}`;
     try {
       const sale = await this.deps.nive.createDraftSale({
-        customerId: store.getReservationCustomerId(r.id),
+        // cadastro parecido com outro: o rascunho sai sem cliente e o nome fica na observação
+        customerId: r.customerStatus === "confirm" ? null : store.getReservationCustomerId(r.id),
         variantId: r.variantId,
         quantity: r.quantity,
-        notes: `Reserva pelo WhatsApp (Nive Atende) · ${r.customerName} · ${r.phone} · válida até ${validade}`,
+        notes: reservationNotes(header, store.listMessages(r.conversationId, 60)),
       });
       return store.updateReservation(r.id, { status: "created", saleId: sale.id, orderNumber: sale.orderNumber, error: null });
     } catch (e) {
@@ -1833,8 +1836,22 @@ export class Engine extends EventEmitter<EngineEvents> {
     const store = this.deps.store;
     const r = store.updateReservation(id, { status: "rejected" });
     this.emit("reservation", r);
-    this.handoff(r.conversationId, "reserva recusada — avise o cliente");
+    void this.tellCustomerReservationDropped(r);
     return r;
+  }
+
+  /**
+   * A loja não manteve a reserva (recusou, cancelou ou excluiu o rascunho no sistema): o cliente fica sabendo
+   * na hora, em vez de esperar por uma confirmação que não vem.
+   */
+  private async tellCustomerReservationDropped(r: Reservation): Promise<void> {
+    const variant = r.variantLabel && r.variantLabel !== "Único" ? ` (${r.variantLabel})` : "";
+    const item = `${r.quantity > 1 ? `${r.quantity}× ` : ""}*${prettyName(r.productDescription)}*${variant}`;
+    await this.sendAiText(
+      r.conversationId,
+      `Sobre a sua reserva: a loja não conseguiu manter ${item} separado no seu nome. Se quiser, te mostro outra opção ou vejo o que dá para fazer. 🙂`,
+      { countsAsAiReply: false },
+    ).catch((e) => this.log("warn", "não foi possível avisar o cliente da reserva recusada", e));
   }
 
   /** Lojista cancelou a reserva pelo app, ou o cliente desistiu na conversa (by = "cliente"). */
@@ -1893,8 +1910,10 @@ export class Engine extends EventEmitter<EngineEvents> {
       this.emit("reservation", store.updateReservation(r.id, { status: "completed" }));
       this.addSystemEvent(r.conversationId, "reservation_created", `Venda da reserva finalizada no sistema${orderNumber ? ` · pedido #${orderNumber}` : ""}`);
     } else if (state === "cancelled" || state === "not_found") {
-      this.emit("reservation", store.updateReservation(r.id, { status: "removed" }));
-      this.addSystemEvent(r.conversationId, "reservation_expired", `Rascunho da reserva ${state === "not_found" ? "excluído" : "cancelado"} no sistema`);
+      const removed = store.updateReservation(r.id, { status: "removed" });
+      this.emit("reservation", removed);
+      this.addSystemEvent(r.conversationId, "reservation_expired", `Rascunho da reserva ${state === "not_found" ? "excluído" : "cancelado"} no sistema · cliente avisado`);
+      await this.tellCustomerReservationDropped(removed);
     }
     return state;
   }
@@ -1949,4 +1968,33 @@ export function aiErrorDetail(e: unknown): string {
   const raw = e instanceof Error ? e.message : typeof e === "string" ? e : "";
   const msg = raw.replace(/\b(sk|AIza)[-\w]{8,}/g, "[chave]").replace(/\s+/g, " ").trim();
   return msg.length > 180 ? `${msg.slice(0, 177)}…` : msg;
+}
+
+/**
+ * Observação do rascunho no ERP: cabeçalho da reserva + a conversa (do fim para o começo, até caber
+ * nos 2.000 caracteres que o sistema aceita). O lojista lê pelo ícone na lista de rascunhos.
+ */
+export function reservationNotes(header: string, messages: ChatMessage[], max = 1990): string {
+  const who: Partial<Record<ChatMessage["origin"], string>> = { consumidor: "Cliente", ia: "Atendente", humano_app: "Loja", humano_celular: "Loja" };
+  const lines: string[] = [];
+  for (const m of messages) {
+    const label = who[m.origin];
+    if (!label) continue;
+    const body = (m.transcript ? `(áudio) ${m.transcript}` : (m.text ?? "")).replace(/\s+/g, " ").trim()
+      || (m.kind === "image" ? "(foto)" : m.kind === "location" ? "(localização)" : m.kind === "audio" ? "(áudio)" : "");
+    if (!body) continue;
+    const time = new Date(m.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    lines.push(`${time} ${label}: ${body.length > 400 ? `${body.slice(0, 399)}…` : body}`);
+  }
+  const head = `${header}\n\nConversa:`;
+  const kept: string[] = [];
+  let size = head.length;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const add = lines[i]!.length + 1;
+    if (size + add > max) break;
+    kept.unshift(lines[i]!);
+    size += add;
+  }
+  if (!kept.length) return header.slice(0, max);
+  return `${head}\n${kept.length < lines.length ? "…\n" : ""}${kept.join("\n")}`.slice(0, max);
 }

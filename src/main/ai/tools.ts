@@ -367,7 +367,7 @@ function promoView(p: NivePromotion, state: ToolRunState, onlyIds?: Set<string>)
     }
   }
   for (const m of p.description.matchAll(/R\$\s*([\d.]+,\d{2})/g)) addMoney(state, Number(m[1]!.replace(/\./g, "").replace(",", ".")));
-  const fim = p.endsAt ? dateBR(p.endsAt) : null;
+  const fim = p.endsAt ? dateBR(p.endsAt, true) : null;
   return {
     promocao: p.name,
     regra: p.description,
@@ -395,10 +395,32 @@ function addMoney(state: ToolRunState, ...values: number[]): void {
   for (const v of values) if (Number.isFinite(v)) state.money.add(Math.round(v * 100) / 100);
 }
 
-function dateBR(iso: string | null): string | null {
+/** Forma de pagamento que a loja usa por dentro e não faz sentido oferecer a quem compra pelo WhatsApp. */
+export function isInternalPaymentMethod(name: string): boolean {
+  return /permuta|vale[\s-]*troca|\btroca\b|bonifica|cortesia|consumo\s+(interno|pr[oó]prio)|uso\s+interno|brinde|devolu/i.test(name);
+}
+
+/**
+ * Data no formato da loja. Com `endOfPeriod` (fim de promoção), usa o horário de Brasília: data com hora vem em UTC do ERP: 30/11 23:59 em
+ * Brasília é 01/12 em UTC, e o cliente ouvia "vale até 01/12". Fim à meia-noite em ponto conta como o dia anterior.
+ */
+export function dateBR(iso: string | null, endOfPeriod = false): string | null {
   if (!iso) return null;
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  return y && m && d ? `${d}/${m}/${y}` : null;
+  if (!endOfPeriod || !/T\d{2}:\d{2}/.test(iso)) {
+    const [y, m, d] = iso.slice(0, 10).split("-");
+    return y && m && d ? `${d}/${m}/${y}` : null;
+  }
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const parts = (ms: number) =>
+    Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+        .formatToParts(new Date(ms))
+        .map((x) => [x.type, x.value]),
+    ) as Record<string, string>;
+  let p = parts(t);
+  if (p.hour === "00" && p.minute === "00" && p.second === "00") p = parts(t - 1000);
+  return `${p.day}/${p.month}/${p.year}`;
 }
 
 /** Nome de pessoa informado na conversa: só letras, espaços e sinais comuns de nome. */
@@ -452,9 +474,11 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
       const products = [...found.values()];
       const view = products.map((p) => {
         const variacoes = p.variants.map((v) => {
-          const reserved = ctx.store.reservedQuantity(v.id, ctx.now());
+          // o pedido pendente do próprio cliente não esgota o produto para ele (antes: "a última acabou agora")
+          const reserved = ctx.store.reservedQuantity(v.id, ctx.now(), ctx.conversationId);
           const disponivel = p.tracksStock ? Math.max(0, Math.floor(v.stockQty - reserved)) : null;
-          return { v, disponivel };
+          const jaPedido = ctx.store.pendingQuantityFor(ctx.conversationId, v.id, ctx.now());
+          return { v, disponivel, jaPedido };
         });
         const total = variacoes.some((x) => x.disponivel === null) ? Infinity : variacoes.reduce((n, x) => n + (x.disponivel ?? 0), 0);
         return { p, variacoes, total };
@@ -513,7 +537,12 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
             ...(ctx.offered?.has(p.id) ? { ja_mostrado: true } : {}),
             variacoes: variacoes
               .filter((x) => x.disponivel === null || x.disponivel > 0)
-              .map((x) => ({ variacao_id: x.v.id, nome: x.v.label, disponivel: x.disponivel === null ? "sob consulta" : x.disponivel })),
+              .map((x) => ({
+                variacao_id: x.v.id,
+                nome: x.v.label,
+                disponivel: x.disponivel === null ? "sob consulta" : x.disponivel,
+                ...(x.jaPedido > 0 ? { ja_pedido_por_este_cliente: x.jaPedido, obs: "Já está no pedido dele aguardando a loja; não diga que acabou." } : {}),
+              })),
           };
         }),
         ...(soldOut.length
@@ -883,7 +912,8 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
         state.actions.push({ label: "Formas de pagamento: sem acesso no sistema", kind: "error" });
         return { resultado: "INDISPONIVEL", instrucao: "Se o texto 'SOBRE A LOJA' disser as formas de pagamento, use-o. Senão, diga que vai confirmar e use transferir_para_humano." };
       }
-      const normais = methods.filter((m) => !m.storeCredit);
+      // formas de uso interno (permuta, vale-troca, bonificação…) não são oferecidas ao consumidor
+      const normais = methods.filter((m) => !m.storeCredit && !isInternalPaymentMethod(m.name));
       const temCrediario = methods.some((m) => m.storeCredit);
       state.actions.push({ label: `Formas de pagamento → ${normais.map((m) => m.name).join(", ") || "nenhuma"}`, kind: "info" });
       return {
@@ -894,7 +924,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext, s
                 "A loja tem crediário, mas quem decide é sempre a equipe. Não ofereça por conta própria e nunca aprove, negue ou explique condições. Se o cliente pedir crediário, fiado ou marcar na conta, diga que a equipe vê com ele e use transferir_para_humano com o motivo 'cliente quer crediário'.",
             }
           : {}),
-        instrucao: "Informe as formas de pagamento com naturalidade, numa frase. Não fale de taxas, juros ou parcelas.",
+        instrucao:
+          "Informe as formas de pagamento com naturalidade, numa frase. Não fale de taxas, juros ou parcelas. " +
+          "Se o texto 'SOBRE A LOJA' restringir alguma forma (ex.: não parcelar, só PIX em promoção), ele vale acima desta lista: não ofereça o que a loja proibiu.",
       };
     }
 

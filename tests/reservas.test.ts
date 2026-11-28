@@ -15,30 +15,25 @@ async function ask(t: ReturnType<typeof setup>, nome: string) {
 }
 
 describe("reserva em nome do cliente", () => {
-  it("cliente novo: avisa na aprovação e cadastra (nome + telefone) ao aprovar", async () => {
+  it("cliente novo: vai direto para o sistema como rascunho, com cadastro (nome + telefone) e a conversa na observação", async () => {
     const t = setup();
     const r = await ask(t, "nathalia rocker beltrame");
-    expect(r.status).toBe("pending_approval");
-    expect(r.customerStatus).toBe("new");
+    expect(r.status).toBe("created");
+    expect(r.customerStatus).toBe("created_new");
     expect(r.customerName).toBe("Nathalia Rocker Beltrame");
-    expect(t.nive.createdCustomers).toHaveLength(0); // nada é cadastrado antes da aprovação
-    const evt = t.store.listMessages(JID).find((m) => m.eventType === "reservation_pending")!;
-    expect(evt.text).toContain("em nome de Nathalia Rocker Beltrame");
-    expect(evt.text).toContain("será cadastrado");
-
-    const ok = await t.engine.approveReservation(r.id);
-    expect(ok.status).toBe("created");
-    expect(ok.customerStatus).toBe("created_new");
     expect(t.nive.createdCustomers).toEqual([{ name: "Nathalia Rocker Beltrame", phone: "21977776666" }]);
     expect(t.nive.drafts[0]!.customerId).toBe("new-1");
-    expect(t.wa.sent.at(-1)!.body).toContain("em nome de Nathalia Rocker Beltrame");
+    const notes = t.nive.drafts[0]!.notes;
+    expect(notes).toContain("Reserva pelo WhatsApp (Nive Atende) · Nathalia Rocker Beltrame");
+    expect(notes).toContain("Conversa:");
+    expect(notes).toContain("Cliente: pode separar em nome de nathalia rocker beltrame");
+    expect(t.store.listMessages(JID).some((m) => m.eventType === "reservation_pending")).toBe(false);
   });
 
   it("cliente já cadastrado com esse nome: vincula sem cadastrar de novo", async () => {
     const t = setup();
     const r = await ask(t, "Pedro Alves");
     expect(r.customerStatus).toBe("found_by_name");
-    await t.engine.approveReservation(r.id);
     expect(t.nive.createdCustomers).toHaveLength(0);
     expect(t.nive.drafts[0]!.customerId).toBe("c-semdata");
   });
@@ -51,7 +46,6 @@ describe("reserva em nome do cliente", () => {
     );
     const r = await ask(t, "Carla Dias");
     expect(r.customerStatus).toBe("ambiguous");
-    await t.engine.approveReservation(r.id);
     expect(t.nive.drafts[0]!.customerId).toBeNull();
     expect(t.nive.createdCustomers).toHaveLength(0);
   });
@@ -87,12 +81,16 @@ describe("reserva vencida", () => {
     expect(t.store.getReservation(r.id)!.status).toBe("completed");
   });
 
-  it("pedido não aprovado a tempo vence e não pode mais ser aprovado", async () => {
+  it("rascunho excluído ou cancelado no sistema: o cliente é avisado", async () => {
     const t = setup();
     const r = await ask(t, "Pedro Alves");
-    t.clock.t += 25 * 3_600_000;
-    await expect(t.engine.approveReservation(r.id)).rejects.toThrow(/venceu/);
-    expect(t.nive.drafts).toHaveLength(0);
+    t.nive.saleStatus[r.saleId!] = "DRAFT_CANCELLED";
+    await t.engine.syncReservationsWithErp();
+    expect(t.store.getReservation(r.id)!.status).toBe("removed");
+    expect(t.wa.sent.at(-1)!.body).toContain("não conseguiu manter *Bolsa");
+    const sent = t.wa.sent.length;
+    await t.engine.syncReservationsWithErp(); // não avisa de novo
+    expect(t.wa.sent.length).toBe(sent);
   });
 
   it("respeita a opção de não cancelar rascunhos", async () => {
@@ -207,17 +205,6 @@ describe("cliente desiste da reserva", () => {
     expect(evt.text).toContain("estoque voltou");
   });
 
-  it("reserva aguardando aprovação: sai das pendências sem mexer no ERP", async () => {
-    const t = setup();
-    const r = await ask(t, "Pedro Alves");
-    expect(r.status).toBe("pending_approval");
-    t.ai.script(cancel(), reply("Cancelado, sem problema!"));
-    await t.engine.handleInbound(inbound(PHONE, "pode cancelar"));
-    await t.clock.advance(2000);
-    expect(t.store.getReservation(r.id)!.status).toBe("cancelled");
-    expect(t.nive.cancelled).toEqual([]);
-  });
-
   it("venda já finalizada: passa para a equipe", async () => {
     const t = setup({ settings: { reservation: { autoEnabled: true } } });
     const r = await ask(t, "Pedro Alves");
@@ -241,18 +228,17 @@ describe("cliente desiste da reserva", () => {
 describe("prazo da reserva na mensagem", () => {
   it("informa até quando fica reservado quando ligado", async () => {
     const t = setup();
-    const r = await ask(t, "Pedro Alves");
-    await t.engine.approveReservation(r.id);
-    expect(t.wa.sent.at(-1)!.body).toMatch(/ até /);
+    let toolResult = "";
+    t.ai.script(reserve("Pedro Alves"), (msgs) => {
+      toolResult = String(msgs.at(-1)!.content);
+      return reply("Separado!");
+    });
+    await t.engine.handleInbound(inbound(PHONE, "separa pra mim"));
+    await t.clock.advance(2000);
+    expect(toolResult).toContain("valido_ate");
   });
 
   it("não informa o prazo quando desligado (nem para a IA)", async () => {
-    const t = setup({ settings: { reservation: { showDeadline: false } } });
-    const r = await ask(t, "Pedro Alves");
-    await t.engine.approveReservation(r.id);
-    expect(t.wa.sent.at(-1)!.body).not.toMatch(/ até /);
-    expect(t.wa.sent.at(-1)!.body).toContain("em nome de Pedro Alves.");
-
     const t2 = setup({ settings: { reservation: { showDeadline: false, autoEnabled: true } } });
     let toolResult = "";
     t2.ai.script(reserve("Pedro Alves"), (msgs) => {
@@ -282,17 +268,14 @@ describe("nome parecido com cadastro existente", () => {
     expect(t.store.listReservations()).toHaveLength(0);
   });
 
-  it("nome parecido: o lojista confirma quem é antes de cadastrar", async () => {
+  it("nome parecido: rascunho sai sem cliente e sem cadastrar ninguém (o lojista confere pela observação)", async () => {
     const t = setup();
     t.nive.namedCustomers.push(aliny);
     const r = await ask(t, "Aliny Rocker");
+    expect(r.status).toBe("created");
     expect(r.customerStatus).toBe("confirm");
-    expect(r.customerCandidates).toEqual([{ id: "c-aliny", name: "ALINY ROCKER BELTRAME" }]);
-    await expect(t.engine.approveReservation(r.id)).rejects.toThrow(/Confirme qual é o cliente/);
-    const ok = await t.engine.approveReservation(r.id, { customerId: "c-aliny" });
-    expect(ok.status).toBe("created");
-    expect(ok.customerName).toBe("ALINY ROCKER BELTRAME");
-    expect(t.nive.drafts[0]!.customerId).toBe("c-aliny");
+    expect(t.nive.drafts[0]!.customerId).toBeNull();
+    expect(t.nive.drafts[0]!.notes).toContain("Aliny Rocker");
     expect(t.nive.createdCustomers).toHaveLength(0);
   });
 
@@ -300,19 +283,7 @@ describe("nome parecido com cadastro existente", () => {
     const t = setup();
     t.nive.namedCustomers.push(aliny);
     const r = await ask(t, "Aliny Souza");
-    expect(r.customerStatus).toBe("new"); // "Souza" não bate com Aliny Rocker Beltrame
-    const t2 = setup();
-    t2.nive.namedCustomers.push(aliny);
-    const r2 = await ask(t2, "Aliny Rocker");
-    await t2.engine.approveReservation(r2.id, { createNew: true });
-    expect(t2.nive.createdCustomers).toEqual([{ name: "Aliny Rocker", phone: "21977776666" }]);
-  });
-
-  it("reserva automática com nome parecido espera a confirmação do lojista", async () => {
-    const t = setup({ settings: { reservation: { autoEnabled: true } } });
-    t.nive.namedCustomers.push(aliny);
-    const r = await ask(t, "Aliny Rocker");
-    expect(r.status).toBe("pending_approval");
-    expect(t.nive.drafts).toHaveLength(0);
+    expect(r.customerStatus).toBe("created_new"); // "Souza" não bate com Aliny Rocker Beltrame
+    expect(t.nive.createdCustomers).toEqual([{ name: "Aliny Souza", phone: "21977776666" }]);
   });
 });

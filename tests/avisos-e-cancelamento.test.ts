@@ -22,7 +22,9 @@ describe("lembrete de reserva cancelada", () => {
     const sent = t.wa.sent.length;
     t.clock.t += 22 * 3_600_000;
     await t.engine.runProactive();
-    expect(t.wa.sent.length).toBe(sent);
+    // sem lembrete: só o aviso de que a loja não manteve a reserva
+    expect(t.wa.sent.length).toBe(sent + 1);
+    expect(t.wa.sent.at(-1)!.body).toContain("não conseguiu manter");
     expect(t.store.getReservation(r.id)!.status).toBe("removed");
   });
 

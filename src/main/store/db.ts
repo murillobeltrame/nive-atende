@@ -613,12 +613,27 @@ export class Store {
   }
 
   /** Quantidade já reservada (rascunhos ainda válidos ou aguardando aprovação) de uma variante. */
-  reservedQuantity(variantId: string, now = Date.now()): number {
+  /**
+   * Quantidade separada por reservas em aberto. `ownConversationId` deixa de fora os pedidos
+   * pendentes dessa conversa: para o próprio cliente, o que ele pediu não está "esgotado".
+   */
+  reservedQuantity(variantId: string, now = Date.now(), ownConversationId?: string): number {
     const r = this.db
       .prepare(
-        "SELECT COALESCE(SUM(quantity), 0) AS q FROM reservations WHERE variant_id = ? AND status IN ('created','pending_approval') AND expires_at > ?",
+        "SELECT COALESCE(SUM(quantity), 0) AS q FROM reservations WHERE variant_id = ? AND status IN ('created','pending_approval') AND expires_at > ?" +
+          " AND NOT (status = 'pending_approval' AND conversation_id = ?)",
       )
-      .get(variantId, now) as Row;
+      .get(variantId, now, ownConversationId ?? "") as Row;
+    return num(r.q);
+  }
+
+  /** Quantidade pedida por esta conversa que ainda aguarda a aprovação da loja. */
+  pendingQuantityFor(conversationId: string, variantId: string, now = Date.now()): number {
+    const r = this.db
+      .prepare(
+        "SELECT COALESCE(SUM(quantity), 0) AS q FROM reservations WHERE conversation_id = ? AND variant_id = ? AND status = 'pending_approval' AND expires_at > ?",
+      )
+      .get(conversationId, variantId, now) as Row;
     return num(r.q);
   }
 

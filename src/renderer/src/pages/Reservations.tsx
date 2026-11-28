@@ -59,8 +59,8 @@ export function ReservationsPage({ onOpenConversation }: { onOpenConversation: (
       <div className="page-pad">
         <h1 className="page-title">Reservas</h1>
         <p className="page-sub">
-          Produtos que clientes pediram para separar pelo WhatsApp. Cada reserva aprovada vira uma venda em rascunho no
-          sistema Nive. Se a venda não for finalizada até o fim da validade, o rascunho é cancelado e as peças voltam ao
+          Produtos que clientes pediram para separar pelo WhatsApp. Cada reserva vira uma venda em rascunho no
+          sistema Nive, com a conversa na observação. Se você excluir ou cancelar o rascunho por lá, o cliente é avisado. Se a venda não for finalizada até o fim da validade, o rascunho é cancelado e as peças voltam ao
           estoque.
         </p>
         {error && (

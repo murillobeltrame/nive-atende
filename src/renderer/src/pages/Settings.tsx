@@ -1023,19 +1023,10 @@ function ReservationSection({ settings, onSettings }: Pick<Props, "settings" | "
         <h2 className="card-title">Reserva de produtos</h2>
         <p className="card-sub">
           Quando o cliente pede para separar um produto, a reserva entra no sistema Nive como uma <b>venda em
-          rascunho</b>.
+          rascunho</b>, com a conversa do WhatsApp na observação. Você confere por lá: finaliza na retirada ou exclui
+          o rascunho — se excluir ou cancelar, o cliente é avisado aqui pelo WhatsApp.
         </p>
         <div className="stack">
-          <Check
-            label="Reserva automática"
-            checked={d.autoEnabled}
-            onChange={(v) => setD({ ...d, autoEnabled: v })}
-            hint={
-              d.autoEnabled
-                ? "Ligada: o produto já fica reservado e o rascunho é criado na hora."
-                : "Desligada: o sistema responde “vou pedir pra separarem” e a reserva espera sua aprovação em Pendências."
-            }
-          />
           <div className="grid-3">
             <Num label="Validade da reserva (horas)" value={d.validityHours} min={1} onChange={(v) => setD({ ...d, validityHours: v })} />
             <Num label="Máximo de unidades por pedido" value={d.maxQtyPerOrder} min={1} onChange={(v) => setD({ ...d, maxQtyPerOrder: v })} />
@@ -1044,7 +1035,7 @@ function ReservationSection({ settings, onSettings }: Pick<Props, "settings" | "
             label="Exigir cliente cadastrado para reservar"
             checked={d.requireCustomer}
             onChange={(v) => setD({ ...d, requireCustomer: v })}
-            hint="Se o número não estiver no cadastro, a reserva fica para você aprovar."
+            hint="Se o número não estiver no cadastro, o sistema não separa e passa o atendimento para alguém da loja."
           />
           <Check
             label="Informar ao cliente até quando fica reservado"

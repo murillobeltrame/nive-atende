@@ -316,22 +316,18 @@ describe("reservas", () => {
     expect(r.orderNumber).toBe(501);
   });
 
-  it("reserva automática desligada fica aguardando aprovação; aprovar cria o rascunho e avisa o cliente", async () => {
+  it("reserva vai direto para o sistema mesmo com a opção antiga de aprovação no app desligada", async () => {
     const t = setup();
     let result = "";
     t.ai.script(toolCall("reservar_produto", { produto_id: "p-bolsa", variacao_id: "v-bolsa", quantidade: 1, nome_cliente: "Maria Teste" }), (msgs) => {
       result = String((msgs.at(-1) as { content: string }).content);
-      return reply("Vou pedir para separarem e já te confirmo.");
+      return reply("Separado!");
     });
     await t.engine.handleInbound(inbound(PHONE, "separa pra mim"));
     await t.clock.advance(2000);
-    expect(result).toContain("AGUARDANDO_CONFIRMACAO_DA_LOJA");
-    expect(t.nive.drafts).toHaveLength(0);
-    const r = t.store.listReservations()[0]!;
-    expect(r.status).toBe("pending_approval");
-    const approved = await t.engine.approveReservation(r.id);
-    expect(approved.status).toBe("created");
-    expect(t.wa.sent.at(-1)!.body).toContain("Separado!");
+    expect(result).toContain("RESERVADO");
+    expect(t.nive.drafts).toHaveLength(1);
+    expect(t.store.listReservations()[0]!.status).toBe("created");
   });
 
   it("não reserva acima do estoque disponível (descontando reservas já feitas)", async () => {
