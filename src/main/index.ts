@@ -1,4 +1,5 @@
 // Processo principal do Electron: janela, ícone na bandeja, IPC e ligação entre os serviços.
+import { ErpBridge } from "./erp-bridge";
 import { ActionAlertSync } from "./action-alerts";
 import { Simulator } from "./simulator";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, shell, Tray } from "electron";
@@ -779,6 +780,23 @@ const handlers: { [K in RpcMethod]: (...args: Parameters<NiveAtendeApi[K]>) => R
   dismissAlarm: async (refs: string[]) => actionAlerts.dismiss(Array.isArray(refs) ? refs.map(String).slice(0, 50) : []),
 };
 
+// ------------------------------------------------------------------ conversas no Nive ERP
+const erpBridge = new ErpBridge({
+  next: (version) => nive.bridgeNext(version),
+  respond: (id, body) => nive.bridgeRespond(id, body),
+  version: app.getVersion(),
+  enabled: () => Boolean(settings.getSecret("niveApiKey") && settings.get().nive.storeSlug),
+  listConversations: (filter, q) => store.listConversations(filter, q),
+  getConversation: (id) => store.getConversation(id),
+  getMessages: (id) => store.listMessages(id),
+  getMedia: async (messageId) => (await handlers.getMedia(messageId)) ?? null,
+  markRead: (id) => handlers.markRead(id),
+  sendText: (id, text, author) => engine.sendHumanText(id, text, author),
+  takeOver: (id, author) => engine.takeOver(id, author),
+  returnToAi: (id) => engine.returnToAi(id),
+  log: (level, msg, err) => log("app", level, msg, err),
+});
+
 for (const [method, fn] of Object.entries(handlers)) {
   ipcMain.handle(`rpc:${method}`, async (event, ...args: unknown[]) => {
     // só a janela do app pode chamar
@@ -872,6 +890,8 @@ void app.whenReady().then(async () => {
   setTimeout(sendDailySummaryIfDue, 60_000);
   // rascunhos finalizados/excluídos no ERP
   setTimeout(syncReservations, 20_000);
+  // conversas vistas e respondidas pela tela do Nive ERP (o banco continua aqui)
+  erpBridge.start();
   // avisos "aguardando ação" no Nive ERP (e o toque aqui quando ninguém viu lá)
   setTimeout(() => void actionAlerts.sync(), 15_000);
   setInterval(() => void actionAlerts.sync(), 20_000);

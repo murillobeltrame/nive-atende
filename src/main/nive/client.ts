@@ -496,6 +496,24 @@ export class NiveClient implements NiveApi {
     return "cancelled";
   }
 
+  /** Pedidos da tela de conversas do ERP; null quando o ERP ainda não tem a ponte. */
+  async bridgeNext(version: string): Promise<{ requests: { id: string; method: string; args: unknown[] }[]; pollMs: number } | null> {
+    try {
+      const out = await this.request<{ requests?: Json[]; pollMs?: number }>("GET", `/integrations/nive-atende/next?version=${encodeURIComponent(version)}`);
+      return {
+        requests: (out.requests ?? []).map((r) => ({ id: String(r.id), method: String(r.method), args: Array.isArray(r.args) ? r.args : [] })),
+        pollMs: n(out.pollMs) || 8_000,
+      };
+    } catch (e) {
+      if (e instanceof NiveApiError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  async bridgeRespond(id: string, body: { ok: true; data: unknown } | { ok: false; error: string }): Promise<void> {
+    await this.request("POST", `/integrations/nive-atende/${encodeURIComponent(id)}/response`, body);
+  }
+
   async upsertActionAlert(input: ActionAlertInput): Promise<boolean> {
     try {
       await this.request("POST", "/integrations/action-alerts", input);

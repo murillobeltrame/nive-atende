@@ -17,7 +17,7 @@ export const ACTION_ALERT_SOURCE = "nive_atende";
 /** Tempo que o ERP tem para mostrar o aviso antes de o Nive Atende tocar por conta própria. */
 export const LOCAL_ALARM_AFTER_MS = 60_000;
 
-type Wanted = ActionAlarm & { saleId: string | null };
+type Wanted = ActionAlarm & { saleId: string | null; linkUrl?: string | null };
 
 type Sent = { title: string; message: string; since: number };
 
@@ -51,6 +51,8 @@ export class ActionAlertSync {
         conversationId: c.id,
         title: "Cliente aguardando alguém da loja",
         message: `${name}${c.handoffReason ? ` · ${c.handoffReason}` : ""}`.slice(0, 600),
+        // abre a conversa na tela "Conversas do WhatsApp" do ERP (buscada aqui, no computador da loja)
+        linkUrl: `/nive-atende?c=${encodeURIComponent(c.id)}`,
         saleId: null,
       });
     }
@@ -118,7 +120,7 @@ export class ActionAlertSync {
       if (prev && prev.title === w.title && prev.message === w.message) continue;
       try {
         const ok = nive.upsertActionAlert
-          ? await nive.upsertActionAlert({ source: ACTION_ALERT_SOURCE, externalRef: w.ref, kind: w.kind, title: w.title, message: w.message, saleId: w.saleId })
+          ? await nive.upsertActionAlert({ source: ACTION_ALERT_SOURCE, externalRef: w.ref, kind: w.kind, title: w.title, message: w.message, saleId: w.saleId, linkUrl: w.linkUrl ?? null })
           : false;
         if (!ok) erpOk = false;
         sent[w.ref] = { title: w.title, message: w.message, since: prev?.since ?? now() };
@@ -149,7 +151,7 @@ export class ActionAlertSync {
       .filter((w) => !dismissed.includes(w.ref))
       .filter((w) => !seenInErp.has(w.ref))
       .filter((w) => now() - (sent[w.ref]?.since ?? now()) >= LOCAL_ALARM_AFTER_MS)
-      .map(({ saleId: _saleId, ...a }) => ({ ...a, erpOffline: !erpOk }));
+      .map(({ saleId: _saleId, linkUrl: _linkUrl, ...a }) => ({ ...a, erpOffline: !erpOk }));
     this.deps.onAlarm(alarms);
   }
 }
